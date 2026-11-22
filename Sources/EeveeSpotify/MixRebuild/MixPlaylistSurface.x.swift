@@ -181,6 +181,7 @@ private final class MixPlaylistEditorController: UIViewController {
     }
 
     private func refresh() {
+        mode.isOn = MixPlaylistRuntime.enabled
         secondsLabel.text = "Transition duration · \(MixPlaylistRuntime.seconds) sec"
         status.text = MixPlaylistRuntime.nativeStatus + "\nA native preference change does not prove two streamed tracks overlap."
     }

@@ -132,13 +132,18 @@ enum MixPlaylistRuntime {
     }
 
     static var nativeStatus: String {
-        guard preferences != nil else { return "Waiting for Spotify playback preferences" }
-        if !enabled { return "Local Mix is off" }
-        if requestedMilliseconds < 0 { return "Waiting to request playback crossfade" }
-        if observedMilliseconds == requestedMilliseconds {
-            return "Crossfade setting accepted; audio overlap unverified"
+        // Show the actual persisted local switch state FIRST. Spotify Free
+        // does not expose a live native preference object in the user's trace,
+        // so this used to display the same "Waiting" message for both On/Off.
+        if !enabled { return "Local Mix switch is OFF" }
+        guard preferences != nil else {
+            return "Local Mix switch is ON. Spotify playback preferences unavailable; audible transitions NOT active or verified."
         }
-        return "Crossfade requested; audio overlap unverified"
+        if requestedMilliseconds < 0 { return "Local Mix switch is ON; waiting for native crossfade request" }
+        if observedMilliseconds == requestedMilliseconds {
+            return "Native crossfade setting accepted; actual audio overlap remains unverified"
+        }
+        return "Native crossfade requested; actual audio overlap remains unverified"
     }
 
     static func enable(_ on: Bool) {
