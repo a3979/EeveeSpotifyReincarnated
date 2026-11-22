@@ -157,7 +157,8 @@ enum EeveeCrossfade {
         EeveePropertyReplacement(name: "use_playback_settings_crossfade", scope: "playback-settings", modification: .forceBool(false)),
     ]
 
-    // Enable only Spotify's local crossfade capability. This does not enable
+    // Register these before RemoteFlags.prepare() so Spotify's native crossfade
+    // remains available to the local mode. This does not enable cloud AutoMix.
     // AutoMix, server-side transitions or any Premium entitlement.
     static let flags: [String: Any] = [
         "ios-feature-settings.crossfade_enabled": true,
