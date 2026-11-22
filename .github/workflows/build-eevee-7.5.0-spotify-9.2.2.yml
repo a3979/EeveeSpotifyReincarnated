@@ -3,7 +3,6 @@ name: Build EeveeSpotify 7.5.0 + Local Mix Studio (Spotify 9.2.2)
 on:
   push:
     paths:
-      - '.github/workflows/build-eevee-7.5.0-spotify-9.2.2.yml'
       - 'Sources/EeveeSpotify/LocalMix/**'
       - 'Sources/EeveeSpotify/Settings/Views/EeveeSettingsView.swift'
       - 'Sources/EeveeSpotify/Tweak.x.swift'
@@ -137,9 +136,9 @@ jobs:
           unzip -tq "$RUNNER_TEMP/spotify.ipa" >/dev/null
           INFO="$RUNNER_TEMP/spotify-info.plist"
           unzip -p "$RUNNER_TEMP/spotify.ipa" Payload/Spotify.app/Info.plist > "$INFO"
-          BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw - "$INFO")
-          VERSION=$(plutil -extract CFBundleShortVersionString raw - "$INFO")
-          BUILD=$(plutil -extract CFBundleVersion raw - "$INFO")
+          BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$INFO")
+          VERSION=$(plutil -extract CFBundleShortVersionString raw "$INFO")
+          BUILD=$(plutil -extract CFBundleVersion raw "$INFO")
           echo "Spotify bundle: $BUNDLE_ID"
           echo "Spotify version: $VERSION ($BUILD)"
           [ "$BUNDLE_ID" = "com.spotify.client" ] || { echo "::error::Unexpected bundle identifier: $BUNDLE_ID"; exit 1; }
@@ -177,8 +176,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/verify"
           unzip -q "$IPA" -d "$RUNNER_TEMP/verify"
           APP="$RUNNER_TEMP/verify/Payload/Spotify.app"
-          BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw - "$APP/Info.plist")
-          VERSION=$(plutil -extract CFBundleShortVersionString raw - "$APP/Info.plist")
+          BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$APP/Info.plist")
+          VERSION=$(plutil -extract CFBundleShortVersionString raw "$APP/Info.plist")
           [ "$BUNDLE_ID" = "com.spotify.client" ] || { echo "::error::Packaged bundle identifier changed"; exit 1; }
           [ "$VERSION" = "9.2.2" ] || { echo "::error::Packaged Spotify version changed"; exit 1; }
           test -s "$APP/Frameworks/EeveeSpotify.dylib"
