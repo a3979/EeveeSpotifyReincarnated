@@ -81,8 +81,16 @@ func activateLiquidGlass() {
                                         PlayerArtworkHook.targetName, PlayerDurationHook.targetName))
     }
 
+    // Local Mix belongs to Spotify's playlist page even when the optional
+    // Liquid Glass visual redesign is disabled.
+    if !options.enabled || options.playlist == false {
+        add("playlist Mix", activate(MixPlaylistFallbackGroup(), MixPlaylistFallbackHook.targetName))
+    }
     guard options.enabled else { return }
     guard #available(iOS 26.0, *) else {
+        if options.playlist != false {
+            add("playlist Mix", activate(MixPlaylistFallbackGroup(), MixPlaylistFallbackHook.targetName))
+        }
         eeveeLog("[EeveeSpotify][Glass] Skipped: needs iOS 26")
         return
     }
@@ -113,7 +121,11 @@ func activateLiquidGlass() {
         add("home", activate(GlassHomeGroup(), GlassHomeShortcutHook.targetName))
     }
     if options.playlist != false {
-        add("playlist", activate(GlassPlaylistGroup(), GlassPlaylistHook.targetName, PlaylistPlayStateHook.targetName, PlaylistListHook.targetName, PlaylistArtworkHook.targetName, PlaylistHeaderLayoutHook.targetName, PlaylistChipHook.targetName))
+        let glassPlaylist = activate(GlassPlaylistGroup(), GlassPlaylistHook.targetName, PlaylistPlayStateHook.targetName, PlaylistListHook.targetName, PlaylistArtworkHook.targetName, PlaylistHeaderLayoutHook.targetName, PlaylistChipHook.targetName)
+        add("playlist", glassPlaylist)
+        if !glassPlaylist {
+            add("playlist Mix fallback", activate(MixPlaylistFallbackGroup(), MixPlaylistFallbackHook.targetName))
+        }
         add("album", activate(GlassAlbumGroup(), GlassAlbumHook.targetName, GlassAlbumListHook.targetName))
         if activate(GlassArtistGroup(), GlassArtistHook.targetName) {
             EeveePixieInstallArtistFollow()
