@@ -1,6 +1,8 @@
 #import <Orion/Orion.h>
 #import <Foundation/Foundation.h>
 #import <objc/message.h>
+#import <objc/runtime.h>
+#include <string.h>
 #import "Tweak.h"
 
 #if NO_JBROOT
@@ -24,6 +26,37 @@ NSString *EeveeJBRootPath(NSString *path) {
 // Typed primitive ObjC calls; NSObject.perform would corrupt scalar arguments.
 // The playlist Mix toggle only requests Spotify's existing crossfade. It does
 // not enable Spotify's Premium cloud Mix or guarantee two audio tracks overlap.
+// Diagnostic introspection only. Do not invoke unknown Swift selectors: their
+// signatures have not been verified and could crash Spotify. This captures
+// available Objective-C methods for the native transition player/UI so we can
+// determine whether the bundled Spotify code is usable on a Free account.
+NSString *MixRebuildDescribeNativeMixClasses(void) {
+    unsigned int count = 0;
+    Class *classes = objc_copyClassList(&count);
+    if (!classes) return @"Objective-C class enumeration unavailable";
+    NSMutableArray<NSString *> *results = [NSMutableArray array];
+    for (unsigned int i = 0; i < count && results.count < 25; i++) {
+        const char *name = class_getName(classes[i]);
+        if (!name || (!strstr(name, "MixingTransitionPlayer") &&
+                      !strstr(name, "MixingEditViewController") &&
+                      !strstr(name, "MixButtonElement") &&
+                      !strstr(name, "MixingTransitionService"))) continue;
+        unsigned int methodCount = 0;
+        Method *methods = class_copyMethodList(classes[i], &methodCount);
+        NSMutableArray<NSString *> *selectors = [NSMutableArray array];
+        for (unsigned int j = 0; j < methodCount && selectors.count < 14; j++) {
+            SEL selector = method_getName(methods[j]);
+            if (selector) [selectors addObject:NSStringFromSelector(selector)];
+        }
+        if (methods) free(methods);
+        [results addObject:[NSString stringWithFormat:@"%s (%u methods): %@",
+                            name, methodCount, [selectors componentsJoinedByString:@", "]]];
+    }
+    free(classes);
+    return results.count ? [results componentsJoinedByString:@"\\n"]
+                         : @"No native mixing classes exposed to Objective-C runtime";
+}
+
 void MixRebuildSetNativeCrossfadeTime(id target, NSInteger milliseconds) {
     SEL sel = NSSelectorFromString(@"setAudioCrossfadeTime:");
     if (!target || ![target respondsToSelector:sel]) return;
