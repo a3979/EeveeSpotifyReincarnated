@@ -5,6 +5,10 @@ NS_ASSUME_NONNULL_BEGIN
 void MixRebuildSetNativeCrossfadeTime(id target, NSInteger milliseconds);
 void MixRebuildSetNativeCrossfadeEnabled(id target, BOOL enabled);
 NSString *MixRebuildDescribeNativeMixClasses(void);
+int MixRebuildInstallPlaybackProbe(void);
+int MixRebuildActiveNativePCMPaths(void);
+int MixRebuildActiveAVFoundationPCMPaths(void);
+NSString *MixRebuildPlaybackMonitorStatus(void);
 void EeveeSBInvokeSeekDouble(id target, SEL selector, double argument);
 NSString *EeveeJBRootPath(NSString *path);
 BOOL EeveeSetMainInfoValue(NSString *key, id value);
