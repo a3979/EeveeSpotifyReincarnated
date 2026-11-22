@@ -113,6 +113,8 @@ final class PlaylistActionRow: UIView {
     }
 
     private let shuffleButton = PlaylistActionRow.circle("shuffle")
+    private let mixButton = PlaylistActionRow.circle("waveform")
+    private var mixStateObserver: NSObjectProtocol?
     private let shuffleDot: UIView = {
         let dot = UIView(frame: CGRect(x: 0, y: 0, width: 4, height: 4))
         dot.layer.cornerRadius = 2
@@ -172,11 +174,15 @@ final class PlaylistActionRow: UIView {
         actions.contentInsetAdjustmentBehavior = .never
         addSubview(actions)
         addSubview(playButton)
+        mixButton.isHidden = true
+        mixButton.accessibilityIdentifier = "Eevee.Playlist.Mix"
+        mixButton.accessibilityLabel = "Local Beat Mix Off"
+        mixButton.accessibilityHint = "Turns on locally analyzed beat-aware crossfading for this playlist."
         artistDownloadButton.accessibilityIdentifier = "Eevee.Artist.Download"
         artistDownloadButton.accessibilityLabel = "Artist downloads"
         artistDownloadButton.isHidden = true
         actions.addSubview(artistDownloadButton)
-        for (button, name) in [(shuffleButton,"Shuffle"),(addButton,"Add"),(shareButton,"Share"),(followButton,"Follow")] {
+        for (button, name) in [(shuffleButton,"Shuffle"),(mixButton,"Mix"),(addButton,"Add"),(shareButton,"Share"),(followButton,"Follow")] {
             button.accessibilityIdentifier = "Eevee.Playlist." + name
             actions.addSubview(button)
         }
@@ -187,6 +193,24 @@ final class PlaylistActionRow: UIView {
         addButton.addAction(UIAction { [weak self] _ in self?.forward(self?.add, "add") }, for: .primaryActionTriggered)
         followButton.addAction(UIAction { [weak self] _ in self?.forward(self?.followControl, "follow") }, for: .primaryActionTriggered)
         shareButton.addAction(UIAction { [weak self] _ in self?.forward(self?.share, "share") }, for: .primaryActionTriggered)
+        mixButton.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            let enabling = !LocalMixRuntime.enabled
+            LocalMixRuntime.setEnabled(enabling)
+            if enabling {
+                let playing = (self.play?.accessibilityLabel ?? self.play?.eeveeFirst(UIControl.self)?.accessibilityLabel)?
+                    .lowercased().contains("pause") == true
+                if !playing { self.forward(self.play, "mix") }
+            }
+            self.sync()
+        }, for: .primaryActionTriggered)
+        mixStateObserver = NotificationCenter.default.addObserver(
+            forName: .eeveeLocalMixStateChanged, object: nil, queue: .main
+        ) { [weak self] _ in self?.sync() }
+    }
+
+    deinit {
+        if let mixStateObserver { NotificationCenter.default.removeObserver(mixStateObserver) }
     }
 
     required init?(coder: NSCoder) { nil }
@@ -213,7 +237,7 @@ final class PlaylistActionRow: UIView {
             if native.frame != frame { native.frame = frame }
             x += size.width + gap
         }
-        for button in [shuffleButton, artistDownloadButton, addButton, shareButton, followButton] where !button.isHidden {
+        for button in [shuffleButton, mixButton, artistDownloadButton, addButton, shareButton, followButton] where !button.isHidden {
             let width = side
             let frame = CGRect(x: x, y: 0, width: width, height: side)
             if button.frame != frame { button.frame = frame }
@@ -338,6 +362,20 @@ final class PlaylistActionRow: UIView {
     }
 
     func sync() {
+        let isPlaylist = sourceRoot.flatMap { pageURI(from: $0) }?.hasPrefix("spotify:playlist:") == true
+        let hideMix = !isPlaylist
+        if mixButton.isHidden != hideMix {
+            mixButton.isHidden = hideMix
+            setNeedsLayout()
+        }
+        let mixEnabled = LocalMixRuntime.enabled
+        var mixConfig = mixButton.configuration
+        mixConfig?.baseForegroundColor = mixEnabled ? Theme.accent : .white
+        if mixButton.configuration != mixConfig { mixButton.configuration = mixConfig }
+        mixButton.isSelected = mixEnabled
+        mixButton.accessibilityLabel = mixEnabled ? "Local Beat Mix On" : "Local Beat Mix Off"
+        mixButton.accessibilityValue = mixEnabled ? "On" : "Off"
+
         if addButton.isHidden != (add == nil) {
             addButton.isHidden = add == nil
             setNeedsLayout()
