@@ -34,7 +34,7 @@ for main_swift in Tests/*/main.swift; do
             extra_sources+=("Sources/EeveeSpotify/Shared/Models/VersionHookTarget.swift")
             ;;
         LocalMixMath)
-            extra_sources+=("Sources/EeveeSpotify/LocalMix/LocalMixMath.swift")
+            extra_sources+=("Sources/EeveeSpotify/LocalMix/LocalMixMath.swift" "Sources/EeveeSpotify/LocalMix/LocalMixCrossfadeMath.swift")
             ;;
     esac
 
