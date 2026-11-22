@@ -55,3 +55,4 @@ void SAPNoteObjCHooks(unsigned count);
 void SAPNoteScheduledBuffer(bool sampleBuffer, uint32_t formatID);
 void SAPNoteExtractionError(void);
 void SAPInstallAVHooks(void);
+int SAPInstallSideloadAudioImports(void);
