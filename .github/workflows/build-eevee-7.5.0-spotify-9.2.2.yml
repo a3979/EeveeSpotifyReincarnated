@@ -1,6 +1,9 @@
 name: Build EeveeSpotify 7.5.0 (Spotify 9.2.2 / Orion included)
 
 on:
+  push:
+    paths:
+      - '.github/workflows/build-eevee-7.5.0-spotify-9.2.2.yml'
   workflow_dispatch:
     inputs:
       ipa_url:
@@ -26,7 +29,7 @@ jobs:
           command -v cyan
       - name: Download and check vanilla Spotify 9.2.2
         env:
-          IPA_URL: ${{ inputs.ipa_url }}
+          IPA_URL: ${{ inputs.ipa_url || 'https://pixeldrain.com/api/file/R7umuiNR' }}
         run: |
           set -euo pipefail
           case "$IPA_URL" in https://*) ;; *) echo "::error::HTTPS direct-download URL required"; exit 1;; esac
