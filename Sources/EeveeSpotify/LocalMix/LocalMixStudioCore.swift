@@ -149,6 +149,9 @@ enum LocalMixAnalysis {
 }
 
 @MainActor final class LocalMixStudio: ObservableObject {
+    /// One engine per Spotify process so a mix keeps playing when the settings page is dismissed.
+    static let shared = LocalMixStudio()
+
     @Published var project = MixStudioProject()
     @Published var isPlaying = false
     @Published var isTransitioning = false
