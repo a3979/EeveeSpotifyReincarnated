@@ -97,7 +97,7 @@ jobs:
           case "$IPA_URL" in https://*) ;; *) echo "::error::A direct HTTPS IPA URL is required"; exit 1;; esac
           curl --fail --location --retry 3 "$IPA_URL" -o "$RUNNER_TEMP/spotify.ipa"
           unzip -tq "$RUNNER_TEMP/spotify.ipa" >/dev/null
-          VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' <(unzip -p "$RUNNER_TEMP/spotify.ipa" Payload/Spotify.app/Info.plist))
+          VERSION=$(unzip -p "$RUNNER_TEMP/spotify.ipa" Payload/Spotify.app/Info.plist | plutil -extract CFBundleShortVersionString raw -)
           echo "Spotify version: $VERSION"
           [ "$VERSION" = "9.2.2" ] || { echo "::error::Expected Spotify 9.2.2, received $VERSION"; exit 1; }
 
