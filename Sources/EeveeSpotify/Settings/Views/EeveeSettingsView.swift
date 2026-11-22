@@ -59,7 +59,7 @@ struct EeveeSettingsView: View {
             SettingsEntry(key: "patching", icon: "hammer.fill", color: .orange) { AnyView(EeveePatchingSettingsView()) },
             SettingsEntry(key: "lyrics", icon: "quote.bubble.fill", color: .blue) { AnyView(EeveeLyricsSettingsView()) },
             SettingsEntry(key: "sponsorblock", icon: "forward.end.fill", color: .red) { AnyView(SponsorBlockSettingsView()) },
-            SettingsEntry(key: "local_mix_studio", icon: "slider.horizontal.3", color: Color(hex: "#35C9C1")) { AnyView(EeveeLocalMixStudioView()) },
+            SettingsEntry(key: "Local File Mix Studio", icon: "slider.horizontal.3", color: Color(hex: "#35C9C1")) { AnyView(EeveeLocalMixStudioView()) },
             SettingsEntry(key: "Local Beat Mix", icon: "waveform", color: Color(hex: "#35C9C1")) { AnyView(EeveeLocalMixSettingsView()) },
         ] + pixieDownloadsEntries),
         SettingsGroup(key: "settings_group_looks", entries: [
