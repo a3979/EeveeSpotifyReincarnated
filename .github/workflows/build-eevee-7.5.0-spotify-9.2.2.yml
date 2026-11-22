@@ -1,20 +1,11 @@
 name: Build EeveeSpotify 7.5.0 + Local Mix Studio (Spotify 9.2.2)
 
 on:
-  push:
-    paths:
-      - '.github/workflows/build-eevee-7.5.0-spotify-9.2.2.yml'
-      - 'Sources/EeveeSpotify/LocalMix/**'
-      - 'Sources/EeveeSpotify/Settings/Views/EeveeSettingsView.swift'
-      - 'Sources/EeveeSpotify/Tweak.x.swift'
-      - 'Scripts/run-tests.sh'
-      - 'Tests/LocalMixMath/**'
-      - 'layout/Library/Application Support/EeveeSpotify.bundle/en.lproj/Localizable.strings'
   workflow_dispatch:
     inputs:
       ipa_url:
-        description: Optional direct HTTPS URL to a decrypted Spotify 9.2.2 IPA. Leave blank to use the pinned 9.2.2 base.
-        required: false
+        description: Direct HTTPS URL to your own decrypted Spotify 9.2.2 IPA. This must be a real 9.2.2 file, not a webpage or 9.2.0 link.
+        required: true
         type: string
 
 permissions:
@@ -95,7 +86,7 @@ jobs:
 
       - name: Download and validate Spotify 9.2.2 base IPA
         env:
-          IPA_URL: ${{ inputs.ipa_url || 'https://pixeldrain.com/api/file/R7umuiNR' }}
+          IPA_URL: ${{ inputs.ipa_url }}
         run: |
           set -euo pipefail
           case "$IPA_URL" in https://*) ;; *) echo "::error::A direct HTTPS IPA URL is required"; exit 1;; esac
