@@ -141,6 +141,6 @@ enum MixPlaylistRuntime {
             "Native readback milliseconds: \(observedMilliseconds)",
             "Playback overlap: NOT MEASURED",
             "Native Spotify mix components:"
-        ] + found).joined(separator: "\n")
+        ] + found + ["Native ObjC player/UI method signatures:", MixRebuildDescribeNativeMixClasses()]).joined(separator: "\n")
     }
 }
