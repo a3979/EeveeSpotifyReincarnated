@@ -1,0 +1,80 @@
+name: Build EeveeSpotify 7.5.0 (Spotify 9.2.2 / Orion included)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: Direct HTTPS download link to a NEW decrypted Spotify 9.2.2 IPA (not a webpage)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-ipa:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Install packaging utilities
+        run: |
+          brew install dpkg ldid wget make
+          python3 -m pip install --upgrade --break-system-packages git+https://github.com/asdfzxcvbn/pyzule-rw.git
+          command -v cyan
+      - name: Download and check vanilla Spotify 9.2.2
+        env:
+          IPA_URL: ${{ inputs.ipa_url }}
+        run: |
+          set -euo pipefail
+          case "$IPA_URL" in https://*) ;; *) echo "::error::HTTPS direct-download URL required"; exit 1;; esac
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/spotify.ipa" "$IPA_URL"
+          unzip -tq "$RUNNER_TEMP/spotify.ipa" >/dev/null
+          spotify_version=$(unzip -p "$RUNNER_TEMP/spotify.ipa" Payload/Spotify.app/Info.plist | plutil -extract CFBundleShortVersionString raw -)
+          echo "Spotify version: $spotify_version"
+          [ "$spotify_version" = "9.2.2" ] || { echo "::error::Expected clean Spotify 9.2.2, received $spotify_version"; exit 1; }
+      - name: Get release tweak and Orion runtime
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/eevee.deb"             "https://github.com/SideloadLabs/EeveeSpotifyReincarnated/releases/download/v7.5.0/com.eevee.spotify_7.5.0_iphoneos-arm64.deb"
+          dpkg-deb -x "$RUNNER_TEMP/eevee.deb" "$RUNNER_TEMP/deb"
+          # The original upstream build did not explicitly inject Orion; this one does.
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/Orion.zip"             "https://github.com/zbzxbg/es-build-tools/releases/download/v1.0.0/Orion.zip"
+          unzip -q "$RUNNER_TEMP/Orion.zip" -d "$RUNNER_TEMP/orion"
+          rm -rf "$RUNNER_TEMP/orion/__MACOSX"
+          ORION=$(find "$RUNNER_TEMP/orion" -type d -name Orion.framework -not -path '*__MACOSX*' | head -1)
+          [ -n "$ORION" ] && [ -s "$ORION/Orion" ] || { echo "::error::Orion.framework runtime missing"; exit 1; }
+          file "$ORION/Orion"
+          echo "ORION=$ORION" >> "$GITHUB_ENV"
+      - name: Inject EeveeSpotify with Orion
+        run: |
+          set -euo pipefail
+          DYL=$(find "$RUNNER_TEMP/deb" -name EeveeSpotify.dylib | head -1)
+          BUNDLE=$(find "$RUNNER_TEMP/deb" -type d -name EeveeSpotify.bundle | head -1)
+          PROTO=$(find "$RUNNER_TEMP/deb" -type d -name EeveeSwiftProtobuf.framework | head -1)
+          [ -n "$DYL" ] && [ -n "$PROTO" ] || { echo "::error::Eevee tweak or Protobuf framework missing"; exit 1; }
+          mkdir -p outputs
+          ADD=("$DYL" "$ORION" "$PROTO")
+          [ -n "$BUNDLE" ] && ADD+=("$BUNDLE")
+          cyan -i "$RUNNER_TEMP/spotify.ipa" -o outputs/EeveeSpotify-7.5.0-Spotify-9.2.2.ipa -f "${ADD[@]}" -c 9 -m 16.1 -du
+          chmod +x Tools/strip-ipa.sh
+          Tools/strip-ipa.sh outputs/EeveeSpotify-7.5.0-Spotify-9.2.2.ipa
+      - name: Validate final IPA contents
+        run: |
+          set -euo pipefail
+          F=outputs/EeveeSpotify-7.5.0-Spotify-9.2.2.ipa
+          unzip -tq "$F" >/dev/null
+          unzip -Z1 "$F" | grep -q '^Payload/Spotify.app/Frameworks/EeveeSpotify.dylib$'
+          unzip -Z1 "$F" | grep -q '^Payload/Spotify.app/Frameworks/Orion.framework/Orion$'
+          unzip -Z1 "$F" | grep -q '^Payload/Spotify.app/Frameworks/EeveeSwiftProtobuf.framework/'
+          size=$(stat -f%z "$F")
+          [ "$size" -gt 10000000 ] || { echo "::error::IPA unexpectedly small"; exit 1; }
+          echo "ZIP integrity and required runtime files verified; on-device signing/install not tested."
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EeveeSpotify-7.5.0-Spotify-9.2.2-Sideloadly
+          path: outputs/EeveeSpotify-7.5.0-Spotify-9.2.2.ipa
+          if-no-files-found: error
+          retention-days: 14
