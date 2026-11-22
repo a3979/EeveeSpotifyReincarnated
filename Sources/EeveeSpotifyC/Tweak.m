@@ -3,14 +3,18 @@
 #import <objc/message.h>
 #import "Tweak.h"
 
-#if THEOS_PACKAGE_SCHEME_ROOTHIDE
+#if NO_JBROOT
+// Sideloaded IPA: no jailbreak-only library imports.
+#elif THEOS_PACKAGE_SCHEME_ROOTHIDE
 #import <roothide.h>
 #else
 #import <libroot.h>
 #endif
 
 NSString *EeveeJBRootPath(NSString *path) {
-#if THEOS_PACKAGE_SCHEME_ROOTHIDE
+#if NO_JBROOT
+    return path;
+#elif THEOS_PACKAGE_SCHEME_ROOTHIDE
     return jbroot(path);
 #else
     return JBROOT_PATH_NSSTRING(path);
