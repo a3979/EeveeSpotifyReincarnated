@@ -149,6 +149,14 @@ class PreferencesCrossfadeHook: ClassHook<NSObject> {
 }
 
 enum EeveeCrossfade {
+    // Kept as property replacements for the v3 remote-configuration rewrite.
+    static let replacements = [
+        EeveePropertyReplacement(name: "crossfade_enabled", scope: "ios-feature-settings", modification: .forceBool(true)),
+        EeveePropertyReplacement(name: "crossfade_enabled", scope: "core-playback-setup", modification: .forceBool(true)),
+        EeveePropertyReplacement(name: "use_playback_settings_crossfade", scope: "ios-feature-settings", modification: .forceBool(false)),
+        EeveePropertyReplacement(name: "use_playback_settings_crossfade", scope: "playback-settings", modification: .forceBool(false)),
+    ]
+
     // Enable only Spotify's local crossfade capability. This does not enable
     // AutoMix, server-side transitions or any Premium entitlement.
     static let flags: [String: Any] = [
