@@ -518,3 +518,6 @@ lyrics_source_restart_popup = "Restart Spotify so the new lyrics source is used 
 restart_later = "Later";
 manage_downloads = "Manage downloads";
 manage_downloads_subtitle = "Pixie offline downloads";
+
+mix_rebuild = "Local Mix Studio";
+mix_rebuild_subtitle = "Independent two-deck audio mixing";
