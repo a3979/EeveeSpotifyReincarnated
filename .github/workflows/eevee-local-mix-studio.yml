@@ -2,7 +2,12 @@ name: Build Mix Studio two-deck iPhone IPA
 # Final code revision: both low- and high-pass audio effects; iOS-compatible SwiftUI.
 on:
   push:
-    paths: ['.github/workflows/eevee-local-mix-studio.yml']
+    paths:
+      - '.github/workflows/eevee-local-mix-studio.yml'
+      - 'Sources/EeveeSpotify/LocalMix/**'
+      - 'Sources/EeveeSpotify/Settings/Views/EeveeSettingsView.swift'
+      - 'Sources/EeveeSpotify/Settings/Sections/Miscellaneous/Views/EeveeLocalMixSettingsView.swift'
+      - 'layout/Library/Application Support/EeveeSpotify.bundle/en.lproj/Localizable.strings'
   workflow_dispatch:
 permissions:
   contents: read
