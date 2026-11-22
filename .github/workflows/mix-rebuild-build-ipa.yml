@@ -1,0 +1,126 @@
+name: Mix Rebuild · compile and package Spotify 9.2.2
+on:
+  push:
+    branches: [mix-rebuild-clean-20261122]
+    paths:
+      - '.github/workflows/mix-rebuild-build-ipa.yml'
+      - 'Sources/EeveeSpotify/MixRebuild/**'
+      - 'Sources/EeveeSpotify/Settings/Views/EeveeSettingsView.swift'
+      - 'Tests/MixRebuild/**'
+      - 'Scripts/run-tests.sh'
+      - 'layout/Library/Application Support/EeveeSpotify.bundle/en.lproj/Localizable.strings'
+  workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: Direct HTTPS decrypted Spotify 9.2.2 IPA URL
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: mix-rebuild-ipa-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  THEOS: ${{ github.workspace }}/theos
+  SWIFTPROTOBUF_VERSION: "1.29.0"
+jobs:
+  package:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - uses: actions/checkout@v4
+        with:
+          repository: theos/theos
+          path: ${{ github.workspace }}/theos
+          submodules: recursive
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          brew install make dpkg ldid wget
+          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
+          python3 -m pip install --upgrade --break-system-packages git+https://github.com/asdfzxcvbn/pyzule-rw.git
+          command -v cyan
+      - name: Run regression suites
+        run: bash Scripts/run-tests.sh
+      - name: Build SwiftProtobuf framework
+        run: |
+          chmod +x Tools/SwiftProtobufBuild/build-eeveeswiftprotobuf.sh
+          Tools/SwiftProtobufBuild/build-eeveeswiftprotobuf.sh
+      - name: Compile new Mix Rebuild from this branch
+        run: |
+          set -euo pipefail
+          THEOS_PACKAGE_SCHEME=rootless make package FINALPACKAGE=1 NO_JBROOT=1
+          DEB=$(find packages -type f -name 'com.eevee.spotify_*.deb' | head -1)
+          test -n "$DEB"
+          mkdir -p "$RUNNER_TEMP/deb" output
+          dpkg-deb -x "$DEB" "$RUNNER_TEMP/deb"
+          DY=$(find "$RUNNER_TEMP/deb" -type f -name EeveeSpotify.dylib | head -1)
+          PROTO=$(find "$RUNNER_TEMP/deb" -type d -name EeveeSwiftProtobuf.framework | head -1)
+          BUNDLE=$(find "$RUNNER_TEMP/deb" -type d -name EeveeSpotify.bundle | head -1)
+          test -s "$DY" && test -d "$PROTO"
+          grep -aFq 'MixRebuildDeck' "$DY" || { echo "::error::Missing rebuilt audio deck"; exit 1; }
+          if otool -L "$DY" | tail -n +2 | grep -Ei '/var/jb|libroot|roothide'; then
+            echo "::error::Sideload dylib links jailbreak-only libraries"; exit 1
+          fi
+          cp "$DEB" output/MixRebuild-compiled.deb
+          echo "EEVEE_DY=$DY" >> "$GITHUB_ENV"
+          echo "PROTO_FW=$PROTO" >> "$GITHUB_ENV"
+          echo "EEVEE_BUNDLE=$BUNDLE" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MixRebuild-compiled-tweak
+          path: output/MixRebuild-compiled.deb
+          retention-days: 14
+      - name: Download and verify base Spotify IPA
+        env:
+          IPA_URL: ${{ inputs.ipa_url || 'https://litter.catbox.moe/weqgke.ipa' }}
+        run: |
+          set -euo pipefail
+          case "$IPA_URL" in https://*) ;; *) echo "::error::HTTPS direct IPA URL required"; exit 1;; esac
+          curl --fail --location --retry 3 "$IPA_URL" -o "$RUNNER_TEMP/spotify.ipa"
+          unzip -tq "$RUNNER_TEMP/spotify.ipa" > /dev/null
+          unzip -p "$RUNNER_TEMP/spotify.ipa" Payload/Spotify.app/Info.plist > "$RUNNER_TEMP/spotify.plist"
+          test "$(plutil -extract CFBundleIdentifier raw "$RUNNER_TEMP/spotify.plist")" = "com.spotify.client"
+          test "$(plutil -extract CFBundleShortVersionString raw "$RUNNER_TEMP/spotify.plist")" = "9.2.2"
+      - name: Download Orion
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 https://github.com/zbzxbg/es-build-tools/releases/download/v1.0.0/Orion.zip -o "$RUNNER_TEMP/orion.zip"
+          unzip -q "$RUNNER_TEMP/orion.zip" -d "$RUNNER_TEMP/orion"
+          ORION=$(find "$RUNNER_TEMP/orion" -type d -name Orion.framework -not -path '*__MACOSX*' | head -1)
+          test -s "$ORION/Orion"
+          echo "ORION_FW=$ORION" >> "$GITHUB_ENV"
+      - name: Inject newly compiled mix and frameworks
+        run: |
+          set -euo pipefail
+          ADD=("$EEVEE_DY" "$ORION_FW" "$PROTO_FW")
+          if [ -n "$EEVEE_BUNDLE" ] && [ -d "$EEVEE_BUNDLE" ]; then ADD+=("$EEVEE_BUNDLE"); fi
+          cyan -i "$RUNNER_TEMP/spotify.ipa" -o output/EeveeSpotify-MixRebuild-9.2.2.ipa -f "${ADD[@]}" -c 9 -m 16.1 -du
+          chmod +x Tools/strip-ipa.sh
+          Tools/strip-ipa.sh output/EeveeSpotify-MixRebuild-9.2.2.ipa
+      - name: Verify final IPA
+        run: |
+          set -euo pipefail
+          IPA=output/EeveeSpotify-MixRebuild-9.2.2.ipa
+          unzip -tq "$IPA" > /dev/null
+          mkdir -p "$RUNNER_TEMP/verify"
+          unzip -q "$IPA" -d "$RUNNER_TEMP/verify"
+          APP="$RUNNER_TEMP/verify/Payload/Spotify.app"
+          test "$(plutil -extract CFBundleShortVersionString raw "$APP/Info.plist")" = "9.2.2"
+          test -s "$APP/Frameworks/EeveeSpotify.dylib"
+          test -s "$APP/Frameworks/Orion.framework/Orion"
+          test -s "$APP/Frameworks/EeveeSwiftProtobuf.framework/EeveeSwiftProtobuf"
+          grep -aFq 'MixRebuildDeck' "$APP/Frameworks/EeveeSpotify.dylib"
+          echo "IPA validated. Device playback requires iPhone test."
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EeveeSpotify-MixRebuild-Spotify-922
+          path: output/EeveeSpotify-MixRebuild-9.2.2.ipa
+          if-no-files-found: error
+          retention-days: 14
