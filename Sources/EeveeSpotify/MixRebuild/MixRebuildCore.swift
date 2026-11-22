@@ -70,11 +70,22 @@ enum MixRebuildCore {
     static func estimateTempo(energy: [Double], envelopeHz: Double) -> MixRebuildTempo {
         guard envelopeHz.isFinite, (15...200).contains(envelopeHz),
               energy.count >= Int(envelopeHz * 6) else { return .unknown }
+        // PCM amplitude depends on Spotify's output volume, AudioUnit gain,
+        // and the system route. An absolute onset-energy cutoff rejects quiet
+        // but otherwise valid beat trains; normalize by the observed peak.
+        // Still reject near-constant envelopes and genuine near-silence.
+        let levels = energy.map { $0.isFinite ? max(0, min(1, $0)) : 0 }
+        let maximum = levels.max() ?? 0
+        let minimum = levels.min() ?? 0
+        guard maximum >= 0.00005,
+              maximum - minimum >= max(0.00003, maximum * 0.08) else { return .unknown }
+        let scale = 1 / maximum
+
         var onset = [Double](repeating: 0, count: energy.count)
         var baseline = 0.0
-        for i in energy.indices {
-            let sample = energy[i].isFinite ? max(0, min(1, energy[i])) : 0
-            let last = i == 0 ? 0 : (energy[i - 1].isFinite ? max(0, min(1, energy[i - 1])) : 0)
+        for i in levels.indices {
+            let sample = levels[i] * scale
+            let last = i == 0 ? 0 : levels[i - 1] * scale
             onset[i] = max(0, sample - last - baseline * 0.03)
             baseline = baseline * 0.99 + sample * 0.01
         }

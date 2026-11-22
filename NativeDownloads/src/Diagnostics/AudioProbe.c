@@ -216,6 +216,9 @@ static void recordEnergy(SAPContext *context, double level, uint64_t now) {
             SAPContext *expected = owner;
             if (atomic_compare_exchange_strong_explicit(&energyOwner, &expected, context,
                     memory_order_acq_rel, memory_order_acquire)) {
+                // A new PCM owner may be a new track or AudioUnit. Do not
+                // blend the preceding producer's tempo history with this one.
+                atomic_store_explicit(&energyWriteIndex, 0, memory_order_release);
                 atomic_store_explicit(&energyLastSampleTick, 0, memory_order_relaxed);
             }
         }
@@ -569,6 +572,13 @@ SAP_EXPORT void SpotifyAudioProbeReadEnergyEnvelope(double *values, uint32_t cap
     if (sampleCount) *sampleCount = 0;
     if (sampleHz) *sampleHz = 0.0;
     if (!values || !capacity || !sampleCount || !sampleHz || !timebase.numer || !timebase.denom) return;
+    // A paused player can leave 900 old RMS values in the ring. Expose only
+    // current playback activity rather than stale data from seconds ago.
+    uint64_t newest = atomic_load_explicit(&energyLastSampleTick, memory_order_acquire);
+    uint64_t now = mach_absolute_time();
+    uint64_t staleLimit = (uint64_t)(2000000000.0 * (double)timebase.denom /
+                                     (double)timebase.numer);
+    if (!newest || now < newest || now - newest > staleLimit) return;
     uint32_t end = atomic_load_explicit(&energyWriteIndex, memory_order_acquire);
     uint32_t available = end < SAP_ENERGY_CAPACITY ? end : SAP_ENERGY_CAPACITY;
     uint32_t count = available < capacity ? available : capacity;

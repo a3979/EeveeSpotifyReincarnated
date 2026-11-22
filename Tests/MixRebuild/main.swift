@@ -29,6 +29,18 @@ assertMix(near(a.bpm, 120, 0.6), "detect 120 BPM synthetic beat train: \(a)")
 assertMix(a.confidence >= 0.28, "synthetic beat train has usable confidence")
 let b = MixRebuildCore.estimateTempo(energy: pulses(bpm: 100), envelopeHz: 50)
 assertMix(near(b.bpm, 100, 1), "detect 100 BPM: \(b)")
+let quiet = MixRebuildCore.estimateTempo(
+    energy: pulses(bpm: 120).map { $0 * 0.002 },
+    envelopeHz: 50
+)
+assertMix(near(quiet.bpm, 120, 0.6),
+          "quiet PCM must retain tempo after energy normalization: \(quiet)")
+let nearSilence = MixRebuildCore.estimateTempo(
+    energy: pulses(bpm: 120).map { $0 * 0.00001 },
+    envelopeHz: 50
+)
+assertMix(nearSilence == .unknown,
+          "near-silent PCM must not invent a confident BPM")
 let silence = MixRebuildCore.estimateTempo(energy: Array(repeating: 0.0, count: 1000), envelopeHz: 50)
 assertMix(silence == .unknown, "silence must not produce a BPM")
 let constant = MixRebuildCore.estimateTempo(energy: Array(repeating: 0.7, count: 1000), envelopeHz: 50)
