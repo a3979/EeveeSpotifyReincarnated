@@ -54,7 +54,8 @@ jobs:
           if otool -L "$DY" | tail -n +2 | grep -Ei '/var/jb|libroot|roothide'; then
             echo "::error::IPA tweak must not link jailbreak-only libraries"; exit 1
           fi
-          strings "$DY" | grep -q 'header_mix_button_enabled' || { echo "::error::Experimental Mix flag missing"; exit 1; }
+          # Search the binary directly: piping strings into grep -q under pipefail caused SIGPIPE.
+          grep -aFq 'header_mix_button_enabled' "$DY" || { echo "::error::Experimental Mix flag missing"; exit 1; }
           echo "EEVEE_DY=$DY" >> "$GITHUB_ENV"
           echo "PROTO_FW=$PBFW" >> "$GITHUB_ENV"
 
