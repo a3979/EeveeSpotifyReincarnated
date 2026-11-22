@@ -23,7 +23,11 @@ EeveeSpotify_CFLAGS = -fobjc-arc -ISources/EeveeSpotifyC/include -Os
 
 # RootHide's compatibility implementation of libroot resolves jailbreak paths
 # through libroothide at runtime. Rootless builds continue to use libroot.
-ifeq ($(THEOS_PACKAGE_SCHEME),roothide)
+# IPA builds should not link against jailbreak-only libroot.
+NO_JBROOT ?= 0
+ifeq ($(NO_JBROOT),1)
+EeveeSpotify_CFLAGS += -DNO_JBROOT
+else ifeq ($(THEOS_PACKAGE_SCHEME),roothide)
 EeveeSpotify_SWIFTFLAGS += -D ROOTHIDE
 EeveeSpotify_LDFLAGS += -lroothide -Xlinker -rpath -Xlinker @loader_path/.jbroot/Library/Frameworks
 else
