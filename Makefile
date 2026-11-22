@@ -17,9 +17,12 @@ $(shell printf 'enum GeneratedConfig {\n    static let repoSlug = "%s"\n    stat
 
 EeveeSpotify_FILES = $(shell find Sources/EeveeSpotify -name '*.swift') $(shell find Sources/EeveeSpotifyC -name '*.m' -o -name '*.c' -o -name '*.mm' -o -name '*.cpp')
 EeveeSpotify_FILES += Sources/EeveeSpotifyC/PixieArtistFollow.x
+# Read-only audio production diagnostics: never duplicates, edits, or saves music.
+EeveeSpotify_FILES += NativeDownloads/src/Diagnostics/AudioProbe.c NativeDownloads/src/Diagnostics/AVAudioHooks.m modules/fishhook/fishhook.c
 EeveeSpotify_SWIFTFLAGS = -ISources/EeveeSpotifyC/include -Osize
 EeveeSpotify_EXTRA_FRAMEWORKS = EeveeSwiftProtobuf
-EeveeSpotify_CFLAGS = -fobjc-arc -ISources/EeveeSpotifyC/include -Os
+EeveeSpotify_CFLAGS = -fobjc-arc -ISources/EeveeSpotifyC/include -INativeDownloads/src/Public -Imodules/fishhook -DSAP_READ_ONLY_OBSERVER -Os
+EeveeSpotify_FRAMEWORKS += AudioToolbox AVFoundation CoreMedia
 
 # RootHide's compatibility implementation of libroot resolves jailbreak paths
 # through libroothide at runtime. Rootless builds continue to use libroot.
