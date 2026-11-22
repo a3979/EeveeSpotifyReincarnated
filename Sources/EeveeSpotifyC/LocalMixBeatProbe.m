@@ -1,5 +1,5 @@
 // Local Beat Mix: observe Spotify's already-decoded PCM through bundled
-// AVFoundation scheduling hooks, estimate pulse and adapt native crossfade.
+// AudioUnit and AVFoundation hooks, estimate pulse and adapt native crossfade.
 // No track downloading, entitlement forgery or network service required.
 // This does NOT create Spotify's Premium Mix editor or provide two-deck mixing.
 #include <AudioToolbox/AudioToolbox.h>
@@ -100,6 +100,15 @@ static void capturePCM(const AudioStreamBasicDescription *format, AudioBufferLis
                                               : (conf > 0 ? conf - 1 : 0), memory_order_relaxed);
 }
 
+int EeveeLocalMixInstallAudioProbe(void) {
+    // Install before Spotify creates its audio units. The observer remains
+    // detached until the user enables Mix, so normal playback is pass-through.
+    SpotifyAudioProbeInitialize();
+    int status = SAPInstallSideloadAudioImports();
+    SAPInstallAVHooks();
+    return status;
+}
+
 static void attachProbe(void) {
     // The observer bridge is compiled into this same tweak, so this is a
     // direct symbol reference rather than a fragile optional dlopen lookup.
@@ -113,7 +122,6 @@ void EeveeLocalMixSetEnabled(bool on) {
         mach_timebase_info(&info);
         ticksPerSecond = info.numer ? (uint64_t)(1000000000.0 * info.denom / info.numer) : 1000000000ULL;
     }
-    if (on) SAPInstallAVHooks();
     atomic_store_explicit(&enabled, on, memory_order_release);
     if (!on) {
         if (setProbeObserver && atomic_exchange(&registered, false)) setProbeObserver(NULL);
