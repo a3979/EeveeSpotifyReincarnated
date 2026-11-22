@@ -8,6 +8,16 @@ on:
       - 'Sources/EeveeSpotify/Tweak.x.swift'
       - 'Scripts/run-tests.sh'
       - 'Tests/LocalMixMath/**'
+      - 'Makefile'
+      - 'Sources/EeveeSpotify/EeveeCrossfadeForce.x.swift'
+      - 'Sources/EeveeSpotify/Pages/PlaylistActionRow.swift'
+      - 'Sources/EeveeSpotify/Pages/GlassPlaylist.x.swift'
+      - 'Sources/EeveeSpotify/LiquidGlass/LiquidGlass.x.swift'
+      - 'Sources/EeveeSpotify/Settings/Sections/Miscellaneous/Views/EeveeLocalMixSettingsView.swift'
+      - 'Sources/EeveeSpotify/Settings/Views/EeveeSettingsView.swift'
+      - 'Sources/EeveeSpotifyC/**'
+      - 'NativeDownloads/src/Diagnostics/AVAudioHooks.m'
+      - 'NativeDownloads/src/Public/AudioProbe.h'
       - '.github/workflows/build-eevee-7.5.0-spotify-9.2.2.yml'
   workflow_dispatch:
     inputs:
