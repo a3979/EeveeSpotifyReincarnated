@@ -4,15 +4,14 @@
 // This does NOT create Spotify's Premium Mix editor or provide two-deck mixing.
 #include <AudioToolbox/AudioToolbox.h>
 #include <Foundation/Foundation.h>
-#include <dlfcn.h>
+#import "AudioProbe.h"
 #include <mach/mach_time.h>
 #include <math.h>
 #include <stdatomic.h>
 #include <stdint.h>
 #include <string.h>
 
-typedef void (*LocalPCMObserver)(const AudioStreamBasicDescription *, AudioBufferList *, UInt32);
-typedef void (*LocalProbeSetter)(LocalPCMObserver);
+typedef void (*LocalProbeSetter)(SAPPCMObserver);
 
 static LocalProbeSetter setProbeObserver;
 static _Atomic(bool) enabled;
@@ -28,7 +27,7 @@ static double clampDouble(double v, double lo, double hi) {
 
 // Runs on the render thread. No allocation, locks, UI, logging or network calls.
 static void capturePCM(const AudioStreamBasicDescription *format, AudioBufferList *audio, UInt32 frames) {
-    if (!atomic_load_explicit(&enabled, memory_order_relaxed) || !format || !audio ||
+    if (!atomic_load_explicit(&enabled, memory_order_acquire) || !format || !audio ||
         format->mFormatID != kAudioFormatLinearPCM ||
         !(format->mFormatFlags & kAudioFormatFlagIsPacked) ||
         (format->mFormatFlags & kAudioFormatFlagIsBigEndian) ||
@@ -102,15 +101,9 @@ static void capturePCM(const AudioStreamBasicDescription *format, AudioBufferLis
 }
 
 static void attachProbe(void) {
-    if (setProbeObserver) return;
-    void *symbol = dlsym(RTLD_DEFAULT, "SpotifyAudioProbeSetObserver");
-    if (!symbol) {
-        NSString *frameworks = NSBundle.mainBundle.privateFrameworksPath;
-        NSString *path = [frameworks stringByAppendingPathComponent:@"SpotifyAudioProbe.dylib"];
-        void *handle = dlopen(path.fileSystemRepresentation, RTLD_NOW | RTLD_NOLOAD);
-        if (handle) symbol = dlsym(handle, "SpotifyAudioProbeSetObserver");
-    }
-    if (symbol) setProbeObserver = (LocalProbeSetter)symbol;
+    // The observer bridge is compiled into this same tweak, so this is a
+    // direct symbol reference rather than a fragile optional dlopen lookup.
+    if (!setProbeObserver) setProbeObserver = SpotifyAudioProbeSetObserver;
 }
 
 void EeveeLocalMixSetEnabled(bool on) {
@@ -120,9 +113,17 @@ void EeveeLocalMixSetEnabled(bool on) {
         mach_timebase_info(&info);
         ticksPerSecond = info.numer ? (uint64_t)(1000000000.0 * info.denom / info.numer) : 1000000000ULL;
     }
+    if (on) SAPInstallAVHooks();
     atomic_store_explicit(&enabled, on, memory_order_release);
     if (!on) {
         if (setProbeObserver && atomic_exchange(&registered, false)) setProbeObserver(NULL);
+        atomic_store(&lastGateTick, 0);
+        atomic_store(&lastAudioTick, 0);
+        atomic_store(&lastPulseTick, 0);
+        atomic_store(&tempoTenths, 0);
+        atomic_store(&confidence, 0);
+        atomic_store(&baselineLevel, 0);
+        atomic_store(&previousLevel, 0);
         return;
     }
     attachProbe();
