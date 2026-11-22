@@ -51,14 +51,17 @@ private final class LocalMixCompactButton: UIButton {
     }
     func refresh() {
         let on = LocalMixRuntime.enabled
-        var config = UIButton.Configuration.filled()
-        config.cornerStyle = .capsule
-        config.title = on ? "Mix On" : "Mix"
-        config.image = UIImage(systemName: "waveform")
-        config.imagePadding = 5
-        config.baseBackgroundColor = on ? UIColor.systemGreen : UIColor.darkGray
-        config.baseForegroundColor = on ? UIColor.black : UIColor.white
-        configuration = config
+        // Old-style UIButton APIs keep this toggle compatible with the tweak's
+        // iOS 14 deployment target while retaining the same on/off appearance.
+        setTitle(on ? "Mix On" : "Mix", for: .normal)
+        setImage(UIImage(systemName: "waveform"), for: .normal)
+        titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+        tintColor = on ? .black : .white
+        setTitleColor(on ? .black : .white, for: .normal)
+        backgroundColor = on ? .systemGreen : .darkGray
+        layer.cornerRadius = 18
+        contentEdgeInsets = UIEdgeInsets(top: 7, left: 12, bottom: 7, right: 12)
+        semanticContentAttribute = .forceLeftToRight
         accessibilityLabel = on ? "Local Beat Mix On" : "Local Beat Mix Off"
         accessibilityValue = on ? "On" : "Off"
         menu = UIMenu(title: "Transition length", children: [4, 8, 16].map { value in
