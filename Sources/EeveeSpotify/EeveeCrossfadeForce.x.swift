@@ -55,7 +55,7 @@ enum LocalMixRuntime {
             "Last native getter value (raw): \(lastReadSeconds)",
             "Saved original crossfade: \(savedCrossfadeStatus)",
             "Important: native settings and PCM sampling do not prove two tracks overlap."
-        ].joined(separator: "\\n")
+        ].joined(separator: "\n")
     }
     static var savedCrossfadeStatus: String {
         capturedUserValue ? "\(requestedSeconds)s" : "Not yet observed"
