@@ -2,19 +2,19 @@ import Foundation
 
 /// New Mix engine, independent of Spotify's Premium playlist Mix service.
 /// This module has no UIKit/AVFoundation dependencies and can run in CI.
-enum MixRebuildStyle: String, Equatable {
+enum MixRebuildStyle: String, Codable, Equatable, Sendable {
     case tempoPaced
     case smooth
     case quick
 }
 
-struct MixRebuildPlan: Equatable {
+struct MixRebuildPlan: Equatable, Sendable {
     let style: MixRebuildStyle
     let seconds: Double
     let incomingRate: Float
 }
 
-struct MixRebuildTempo: Equatable {
+struct MixRebuildTempo: Codable, Equatable, Sendable {
     let bpm: Double
     let confidence: Double
 
