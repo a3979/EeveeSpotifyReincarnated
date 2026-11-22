@@ -66,12 +66,12 @@ struct EeveeLocalMixSettingsView: View {
             refresh()
         }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in refresh() }
-        .onChange(of: enabled) {
-            LocalMixRuntime.setEnabled(enabled)
+        .onChange(of: enabled) { newValue in
+            LocalMixRuntime.setEnabled(newValue)
             refresh()
         }
-        .onChange(of: beats) {
-            LocalMixRuntime.setBeats(beats)
+        .onChange(of: beats) { newValue in
+            LocalMixRuntime.setBeats(newValue)
         }
     }
 }
