@@ -51,14 +51,22 @@ private final class LocalMixCompactButton: UIButton {
     }
     func refresh() {
         let on = LocalMixRuntime.enabled
-        var config = UIButton.Configuration.filled()
-        config.cornerStyle = .capsule
-        config.title = on ? "Mix On" : "Mix"
-        config.image = UIImage(systemName: "waveform")
-        config.imagePadding = 5
-        config.baseBackgroundColor = on ? UIColor.systemGreen : UIColor.darkGray
-        config.baseForegroundColor = on ? UIColor.black : UIColor.white
-        configuration = config
+        if #available(iOS 15.0, *) {
+            var config = UIButton.Configuration.filled()
+            config.cornerStyle = .capsule
+            config.title = on ? "Mix On" : "Mix"
+            config.image = UIImage(systemName: "waveform")
+            config.imagePadding = 5
+            config.baseBackgroundColor = on ? UIColor.systemGreen : UIColor.darkGray
+            config.baseForegroundColor = on ? UIColor.black : UIColor.white
+            configuration = config
+        } else {
+            setTitle(on ? "Mix On" : "Mix", for: .normal)
+            setImage(UIImage(systemName: "waveform"), for: .normal)
+            backgroundColor = on ? .systemGreen : .darkGray
+            setTitleColor(on ? .black : .white, for: .normal)
+            layer.cornerRadius = 18
+        }
         accessibilityLabel = on ? "Local Beat Mix On" : "Local Beat Mix Off"
         accessibilityValue = on ? "On" : "Off"
         menu = UIMenu(title: "Transition length", children: [4, 8, 16].map { value in
