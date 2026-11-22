@@ -157,7 +157,7 @@ struct EeveeLocalMixStudioView: View {
                                 Text(studio.isManualFaderActive ? "MANUAL CROSSFADER" : "CROSSFADER")
                                 Spacer()
                                 Text("\(Int(studio.fadeProgress * 100))%")
-                                    .monospacedDigit()
+                                    .font(.system(size: 11, weight: .regular, design: .monospaced))
                             }
                             .font(.caption2).foregroundColor(.secondary)
                             Slider(value: Binding(
