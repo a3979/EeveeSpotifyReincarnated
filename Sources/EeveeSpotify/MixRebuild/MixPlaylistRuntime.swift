@@ -21,6 +21,39 @@ enum MixPlaylistRuntime {
     private static var requestedMilliseconds = -1
     private static var observedMilliseconds = -1
     private static var nativeReadCount = 0
+    private static var monitorInstalled = false
+    private static var monitorStatus = -100
+    private static var monitorTimer: Timer?
+    private static var peakNativePCMPaths = 0
+    private static var peakAVPCMPaths = 0
+
+    static func activatePlaybackVerification() {
+        guard !monitorInstalled else { return }
+        monitorInstalled = true
+        monitorStatus = Int(MixRebuildInstallPlaybackProbe())
+        if enabled { startPlaybackSampling() }
+    }
+
+    private static func startPlaybackSampling() {
+        guard monitorTimer == nil else { return }
+        DispatchQueue.main.async {
+            guard enabled, monitorTimer == nil else { return }
+            let timer = Timer(timeInterval: 0.15, repeats: true) { _ in
+                let native = Int(MixRebuildActiveNativePCMPaths())
+                let av = Int(MixRebuildActiveAVFoundationPCMPaths())
+                peakNativePCMPaths = max(peakNativePCMPaths, native)
+                peakAVPCMPaths = max(peakAVPCMPaths, av)
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            monitorTimer = timer
+        }
+    }
+
+    private static func stopPlaybackSampling() {
+        monitorTimer?.invalidate()
+        monitorTimer = nil
+    }
+
 
     static var enabled: Bool { UserDefaults.standard.bool(forKey: enabledKey) }
     static var seconds: Int {
@@ -40,6 +73,13 @@ enum MixPlaylistRuntime {
 
     static func enable(_ on: Bool) {
         UserDefaults.standard.set(on, forKey: enabledKey)
+        if on {
+            peakNativePCMPaths = 0
+            peakAVPCMPaths = 0
+            startPlaybackSampling()
+        } else {
+            stopPlaybackSampling()
+        }
         apply()
         NotificationCenter.default.post(name: .mixPlaylistStateChanged, object: nil)
     }
@@ -110,7 +150,9 @@ enum MixPlaylistRuntime {
 
     private static func apply() {
         guard let preferences else { return }
-        let ms = enabled ? seconds * 1000 : (capturedOriginal ? originalMilliseconds : 0)
+        // Never replace an unknown original Spotify preference with zero.
+        guard enabled || capturedOriginal else { return }
+        let ms = enabled ? seconds * 1000 : originalMilliseconds
         let bool = enabled || (capturedOriginal && originalEnabled)
         applying = true
         MixRebuildSetNativeCrossfadeTime(preferences, ms)
@@ -144,6 +186,11 @@ enum MixPlaylistRuntime {
             "Native requested milliseconds: \(requestedMilliseconds)",
             "Native readback milliseconds: \(observedMilliseconds)",
             "Playback overlap: NOT PROVEN (native timing does not establish concurrent tracks)",
+            "Read-only monitor installation result: \(monitorStatus)",
+            "Peak native PCM source paths in same 350ms window: \(peakNativePCMPaths)",
+            "Peak AVFoundation PCM source paths in same 350ms window: \(peakAVPCMPaths)",
+            "IMPORTANT: two audio paths may be one song routed through two units; distinct songs NOT proven.",
+            "Current PCM probe: \(MixRebuildPlaybackMonitorStatus())",
             "Native player dependency injection callbacks: \(MixNativeServiceProbe.injections)",
             "Native player service observed: \(MixNativeServiceProbe.observed)",
             "Native player service methods: ObjC exposes dependency injection and init only",
