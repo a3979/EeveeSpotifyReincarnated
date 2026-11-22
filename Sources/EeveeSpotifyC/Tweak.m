@@ -21,6 +21,16 @@ NSString *EeveeJBRootPath(NSString *path) {
 #endif
 }
 
+// The Swift preferences class takes a primitive integer; NSObject.perform
+// would pass an object and corrupt the arguments. Invoke the verified selector
+// with the exact integer ABI, exclusively from the main thread.
+void EeveeLocalMixSetNativeCrossfadeTime(id target, NSInteger seconds) {
+    SEL selector = NSSelectorFromString(@"setAudioCrossfadeTime:");
+    if (!target || ![target respondsToSelector:selector]) return;
+    typedef void (*SetCrossfade)(id, SEL, NSInteger);
+    ((SetCrossfade)objc_msgSend)(target, selector, seconds);
+}
+
 void EeveeSBInvokeSeekDouble(id target, SEL selector, double argument) {
     if (!target || !selector) return;
     typedef id (*SeekFn)(id, SEL, double);
