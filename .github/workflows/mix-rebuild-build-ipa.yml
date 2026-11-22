@@ -5,6 +5,10 @@ on:
     paths:
       - '.github/workflows/mix-rebuild-build-ipa.yml'
       - 'Sources/EeveeSpotify/MixRebuild/**'
+      - 'Sources/EeveeSpotify/EeveeCrossfadeForce.x.swift'
+      - 'Sources/EeveeSpotify/Pages/PlaylistActionRow.swift'
+      - 'Sources/EeveeSpotify/LiquidGlass/LiquidGlass.x.swift'
+      - 'Sources/EeveeSpotifyC/**'
       - 'Sources/EeveeSpotify/Settings/Views/EeveeSettingsView.swift'
       - 'Tests/MixRebuild/**'
       - 'Scripts/run-tests.sh'
