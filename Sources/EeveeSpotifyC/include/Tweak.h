@@ -26,8 +26,8 @@ NSInteger EeveePixieArtistFollowing(UIView *header, void (^changed)(void));
 // 1 saved, 0 not saved, -1 not known yet. `changed` runs when Spotify reports a new state.
 NSInteger EeveePixieSavedState(UIView *page, NSString *uri, void (^changed)(void));
 
-// Optional local beat-aware crossfade prototype. These only analyze decoded
-// audio and adjust Spotify's existing native crossfade; they do not unlock Mix.
+// Local Beat Mix analyzes Spotify's decoded PCM and adjusts native crossfade.
+int EeveeLocalMixInstallAudioProbe(void);
 void EeveeLocalMixSetEnabled(BOOL enabled);
 int EeveeLocalMixProbeState(void);
 int EeveeLocalMixEstimatedBPM(void);
