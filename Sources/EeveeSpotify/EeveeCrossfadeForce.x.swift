@@ -108,7 +108,7 @@ enum LocalMixRuntime {
                 preferences = target
                 appliedSeconds = -1
             }
-            if !capturedUserValue && !applyingInternally {
+            if !capturedUserValue && !applyingInternally && nativeWrites == 0 {
                 requestedSeconds = LocalMixCrossfadeMath.normalizeMilliseconds(value) / 1000
                 capturedUserValue = true
             }
@@ -120,6 +120,24 @@ enum LocalMixRuntime {
         }
         if Thread.isMainThread { capture() }
         else { DispatchQueue.main.async(execute: capture) }
+    }
+
+    // Some Spotify builds call only the enable/disable preference setter.
+    // Capture that object too so the local toggle can arm a real duration,
+    // even if the native crossfade slider is never opened.
+    static func observeSwitch(_ target: NSObject) {
+        let work = {
+            if preferences !== target {
+                preferences = target
+                appliedSeconds = -1
+            }
+            if enabled && pendingApply && !applyingInternally {
+                pendingApply = false
+                apply(activeBaseSeconds)
+            }
+        }
+        if Thread.isMainThread { work() }
+        else { DispatchQueue.main.async(execute: work) }
     }
 
     static func remember(_ target: NSObject, requested: Int, applied: Int) {
@@ -197,9 +215,10 @@ class PreferencesCrossfadeHook: ClassHook<NSObject> {
     }
 
     func setAudioCrossfade(_ value: Bool) {
-        // Mix owns the crossfade switch while active; users can disable it by
-        // turning Local Beat Mix off first.
+        // Our local mode keeps Spotify's normal crossfade armed while active.
+        // This is independent of Spotify's Premium playlist Mix toggle.
         orig.setAudioCrossfade(value || LocalMixRuntime.enabled)
+        LocalMixRuntime.observeSwitch(target)
     }
 }
 
