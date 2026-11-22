@@ -1,0 +1,28 @@
+name: Mix Rebuild · clean core tests
+
+on:
+  push:
+    branches: [mix-rebuild-clean-20261122]
+    paths:
+      - '.github/workflows/mix-rebuild-ci.yml'
+      - 'Sources/EeveeSpotify/MixRebuild/**'
+      - 'Tests/MixRebuild/**'
+      - 'Scripts/run-tests.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mix-rebuild-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Swift toolchain
+        run: swift --version
+      - name: Run all Swift and Python regression tests
+        run: bash Scripts/run-tests.sh
