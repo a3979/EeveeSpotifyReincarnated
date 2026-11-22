@@ -417,6 +417,47 @@ SAP_EXPORT void SpotifyAudioProbeReadSnapshot(SAPSnapshot *out) {
     out->pcmConfirmed = atomic_load(&selected->receivedPCM) && format && format->mFormatID == kAudioFormatLinearPCM;
 }
 
+// Read-only, non-render-thread audit: count distinct active PCM producer
+// identities over a short time window. Two active paths are *candidates* for
+// overlap, NOT proof that two different Spotify tracks were decoded.
+// Never iterate the context registry from the real-time render callback.
+SAP_EXPORT void SAPReadActivePCMSourceCounts(uint32_t *nativeCount, uint32_t *externalCount) {
+    if (nativeCount) *nativeCount = 0;
+    if (externalCount) *externalCount = 0;
+    if (!nativeCount || !externalCount || !timebase.numer || !timebase.denom) return;
+    const uint64_t now = mach_absolute_time();
+    // 350 milliseconds allows for different audio callback buffer sizes.
+    const uint64_t window = (uint64_t)(350000000.0 * (double)timebase.denom /
+                                       (double)timebase.numer);
+    const unsigned count = atomic_load_explicit(&contextCount, memory_order_acquire);
+    for (unsigned i = 0; i < count && i < SAP_MAX_CONTEXTS; ++i) {
+        SAPContext *ctx = &contexts[i];
+        if (!atomic_load_explicit(&ctx->published, memory_order_acquire) ||
+            atomic_load_explicit(&ctx->retired, memory_order_acquire) ||
+            !atomic_load_explicit(&ctx->receivedPCM, memory_order_relaxed)) continue;
+        const uint64_t tick = atomic_load_explicit(&ctx->lastTick, memory_order_relaxed);
+        if (!tick || now < tick || now - tick > window) continue;
+        // Avoid counting multiple callbacks registered on the same AudioUnit
+        // as independent players.
+        bool duplicate = false;
+        for (unsigned j = 0; j < i; ++j) {
+            SAPContext *previous = &contexts[j];
+            if (previous->unit != ctx->unit || previous->external != ctx->external ||
+                atomic_load_explicit(&previous->retired, memory_order_acquire) ||
+                !atomic_load_explicit(&previous->published, memory_order_acquire)) continue;
+            const uint64_t priorTick = atomic_load_explicit(&previous->lastTick, memory_order_relaxed);
+            if (priorTick && now >= priorTick && now - priorTick <= window) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) {
+            if (ctx->external) ++*externalCount;
+            else ++*nativeCount;
+        }
+    }
+}
+
 #ifdef SAP_TESTING
 void SAPTestUseBackend(SAPBackend backend) {
     api = backend;
