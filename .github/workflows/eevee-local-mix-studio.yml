@@ -44,7 +44,8 @@ jobs:
           if otool -L "$DY" | tail -n +2 | grep -Ei '/var/jb|libroot|roothide'; then
             echo "::error::Jailbreak-only dependency detected"; exit 1
           fi
-          grep -aFq 'LocalMixStudioProject' "$DY" || { echo "::error::Mix Studio code not present"; exit 1; }
+          grep -aFq 'EeveeLocalMixSetEnabled' "$DY" || { echo "::error::Local audio engine code missing"; exit 1; }
+          grep -Fq 'final class LocalMixStudio' Sources/EeveeSpotify/LocalMix/LocalMixStudioCore.swift || { echo "::error::Mix Studio source missing"; exit 1; }
           echo "EEVEE_DY=$DY" >> "$GITHUB_ENV"
           echo "PROTO_FW=$PBFW" >> "$GITHUB_ENV"
       - name: Download existing compatible Spotify IPA
