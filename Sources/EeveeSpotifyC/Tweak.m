@@ -21,6 +21,21 @@ NSString *EeveeJBRootPath(NSString *path) {
 #endif
 }
 
+// Typed primitive ObjC calls; NSObject.perform would corrupt scalar arguments.
+// The playlist Mix toggle only requests Spotify's existing crossfade. It does
+// not enable Spotify's Premium cloud Mix or guarantee two audio tracks overlap.
+void MixRebuildSetNativeCrossfadeTime(id target, NSInteger milliseconds) {
+    SEL sel = NSSelectorFromString(@"setAudioCrossfadeTime:");
+    if (!target || ![target respondsToSelector:sel]) return;
+    ((void (*)(id, SEL, NSInteger))objc_msgSend)(target, sel, milliseconds);
+}
+
+void MixRebuildSetNativeCrossfadeEnabled(id target, BOOL enabled) {
+    SEL sel = NSSelectorFromString(@"setAudioCrossfade:");
+    if (!target || ![target respondsToSelector:sel]) return;
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(target, sel, enabled);
+}
+
 void EeveeSBInvokeSeekDouble(id target, SEL selector, double argument) {
     if (!target || !selector) return;
     typedef id (*SeekFn)(id, SEL, double);
