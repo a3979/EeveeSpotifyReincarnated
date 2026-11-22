@@ -244,10 +244,11 @@ struct EeveeSpotify: Tweak {
             LocalPlaylistDownloadGroup().activate()
         }
         HideJam.activate()
+        // Crossfade capability overrides must be registered before RemoteFlags.prepare().
+        // Register the native preference hooks early as well, before playback loads.
+        activateEeveeCrossfadeForce()
         activateRemoteFlags()
         activateRatingPromptBlock()
-
-        activateEeveeCrossfadeForce()
         MixPlaylistRuntime.activatePlaybackVerification()
         activateMixNativeServiceProbe()
         activateEeveeAdBlockerExtended()
