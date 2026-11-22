@@ -155,6 +155,7 @@ enum LocalMixAnalysis {
     @Published var fadeProgress = 0.0
     @Published var diagnostic = "Import audio files to begin"
     @Published var preparing = false
+    @Published var savedProjects: [URL] = []
 
     private let engine = AVAudioEngine()
     private let decks = [AVAudioPlayerNode(), AVAudioPlayerNode()]
@@ -179,6 +180,10 @@ enum LocalMixAnalysis {
     static var audioFolder: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(folderName, isDirectory: true)
+    }
+    static var projectFolder: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("LocalMixProjects", isDirectory: true)
     }
 
     init() {
@@ -558,13 +563,32 @@ enum LocalMixAnalysis {
 
     func save() {
         project.updated = Date()
-        if let data = try? JSONEncoder().encode(project) {
-            try? data.write(to: Self.projectFile, options: .atomic)
-        }
+        guard let data = try? JSONEncoder().encode(project) else { return }
+        try? data.write(to: Self.projectFile, options: .atomic)
+        try? FileManager.default.createDirectory(at: Self.projectFolder, withIntermediateDirectories: true)
+        let archive = Self.projectFolder.appendingPathComponent(project.id.uuidString + ".json")
+        try? data.write(to: archive, options: .atomic)
+        reloadSavedProjects()
         lastSaved = Date()
     }
 
+    func reloadSavedProjects() {
+        let all = (try? FileManager.default.contentsOfDirectory(at: Self.projectFolder,
+                  includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        savedProjects = all.filter { $0.pathExtension.lowercased() == "json" }
+            .sorted { ($0.lastPathComponent) < ($1.lastPathComponent) }
+    }
+
+    func newProject() {
+        stop()
+        project = MixStudioProject()
+        currentIndex = 0
+        diagnostic = "Started a new local mix"
+        save()
+    }
+
     func load() {
+        reloadSavedProjects()
         guard let data = try? Data(contentsOf: Self.projectFile),
               let decoded = try? JSONDecoder().decode(MixStudioProject.self, from: data)
         else { return }
