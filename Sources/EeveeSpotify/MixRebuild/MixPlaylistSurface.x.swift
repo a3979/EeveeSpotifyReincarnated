@@ -17,7 +17,7 @@ final class MixPlaylistButton: UIButton {
         titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
         layer.cornerRadius = 18
         contentEdgeInsets = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
-        setImage(UIImage(systemName: "waveform.path"), for: .normal)
+        setImage(UIImage(systemName: "slider.horizontal.3"), for: .normal)
         imageEdgeInsets.right = 5
         addTarget(self, action: #selector(toggle), for: .touchUpInside)
         addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(edit(_:))))
@@ -35,11 +35,13 @@ final class MixPlaylistButton: UIButton {
 
     func refresh() {
         let active = MixPlaylistRuntime.enabled
-        setTitle(active ? "Mix On" : "Mix", for: .normal)
-        setTitleColor(active ? .black : .white, for: .normal)
-        tintColor = active ? .black : .white
-        backgroundColor = active ? UIColor(red: 0.12, green: 0.84, blue: 0.39, alpha: 1)
-                                 : UIColor(white: 0.22, alpha: 1)
+        setTitle("Mix", for: .normal)
+        setTitleColor(.white, for: .normal)
+        tintColor = .white
+        backgroundColor = UIColor(white: 0.16, alpha: 1)
+        layer.borderWidth = active ? 1.5 : 1
+        layer.borderColor = active ? UIColor(red: 0.12, green: 0.84, blue: 0.39, alpha: 1).cgColor
+                                    : UIColor(white: 0.65, alpha: 0.45).cgColor
         accessibilityLabel = active ? "Local playlist Mix on" : "Local playlist Mix off"
         accessibilityValue = active ? "On" : "Off"
     }
