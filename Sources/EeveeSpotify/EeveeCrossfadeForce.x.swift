@@ -135,12 +135,14 @@ class PreferencesCrossfadeHook: ClassHook<NSObject> {
     func setAudioCrossfadeTime(_ value: Int) {
         let adjusted = LocalMixRuntime.replacement(for: value)
         orig.setAudioCrossfadeTime(adjusted)
-        orig.setAudioCrossfade(adjusted > 0)
+        orig.setAudioCrossfade(adjusted > 0 || LocalMixRuntime.enabled)
         LocalMixRuntime.remember(target, requested: value, applied: adjusted)
     }
 
     func setAudioCrossfade(_ value: Bool) {
-        orig.setAudioCrossfade(value)
+        // Mix owns the crossfade switch while active; users can disable it by
+        // turning Local Beat Mix off first.
+        orig.setAudioCrossfade(value || LocalMixRuntime.enabled)
     }
 }
 
