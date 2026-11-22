@@ -120,11 +120,15 @@ enum MixPlaylistRuntime {
     }
 
     static func diagnostics() -> String {
+        // Verified by inspecting Spotify 9.2.2's Mach-O Objective-C class
+        // list, not guessed Swift module-qualified names. The player itself
+        // exposes no public/ObjC startMix method.
         let native = [
-            "PlaylistMixing_ElementKit.MixButtonElement",
-            "PlaylistMixing_TransitionPlayerImpl.MixingTransitionPlayerImpl",
-            "PlaylistMixing_MixingUIImpl.MixingEditViewController",
-            "MixingTransitionPlayerServiceImpl"
+            "_TtC35PlaylistMixing_TransitionPlayerImpl26MixingTransitionPlayerImpl",
+            "_TtC35PlaylistMixing_TransitionPlayerImpl33MixingTransitionPlayerServiceImpl",
+            "_TtC27PlaylistMixing_MixingUIImpl24MixingEditViewController",
+            "_TtC31NowPlaying_MixingTransitionImpl27MixingTransitionServiceImpl",
+            "_TtC25PlaylistMixing_ElementKit20MixingTransitionView"
         ]
         let found = native.map { name -> String in
             let available = NSClassFromString(name) != nil
@@ -139,7 +143,10 @@ enum MixPlaylistRuntime {
             "Native reads: \(nativeReadCount)",
             "Native requested milliseconds: \(requestedMilliseconds)",
             "Native readback milliseconds: \(observedMilliseconds)",
-            "Playback overlap: NOT MEASURED",
+            "Playback overlap: NOT PROVEN (native timing does not establish concurrent tracks)",
+            "Native player dependency injection callbacks: \(MixNativeServiceProbe.injections)",
+            "Native player service observed: \(MixNativeServiceProbe.observed)",
+            "Native player service methods: ObjC exposes dependency injection and init only",
             "Native Spotify mix components:"
         ] + found + ["Native ObjC player/UI method signatures:", MixRebuildDescribeNativeMixClasses()]).joined(separator: "\n")
     }
