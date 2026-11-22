@@ -184,7 +184,14 @@ static void processPCM(SAPContext *context, const AudioStreamBasicDescription *f
         atomic_store_explicit(&context->peak, level, memory_order_relaxed);
         if (level) atomic_fetch_add_explicit(&context->nonzero, 1, memory_order_relaxed);
     }
+#ifdef SAP_READ_ONLY_OBSERVER
+    // The Eevee Local Beat Mix observer only reads samples. Do not force
+    // AVAudioHooks to clone every scheduled buffer just to make it writable.
+    (void)writable;
+    if (callback) callback(format, data, frames);
+#else
     if (writable && callback) callback(format, data, frames);
+#endif
 }
 
 static OSStatus render(void *refcon, AudioUnitRenderActionFlags *flags,
@@ -201,7 +208,11 @@ static OSStatus render(void *refcon, AudioUnitRenderActionFlags *flags,
 }
 
 bool SAPWantsMutableBuffers(void) {
+#ifdef SAP_READ_ONLY_OBSERVER
+    return false;
+#else
     return atomic_load(&observer) != NULL;
+#endif
 }
 void SAPNoteObjCHooks(unsigned count) { atomic_store(&objcHooks, count); }
 void SAPNoteScheduledBuffer(bool sampleBuffer, uint32_t formatID) {

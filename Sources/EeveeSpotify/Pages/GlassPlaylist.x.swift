@@ -4,6 +4,116 @@ import UIKit
 
 struct GlassPlaylistGroup: HookGroup {}
 
+// Lightweight playlist action-row integration used when the user has not
+// enabled the full Liquid Glass redesign. It reuses Spotify's native controls
+// and adds only the Local Beat Mix action.
+struct LocalMixPlaylistGroup: HookGroup {}
+
+@available(iOS 26.0, *)
+enum LocalMixPlaylistUI {
+    static func install(in root: UIView) -> Bool {
+        guard let header = root.subviews.lazy.compactMap({
+            $0.eeveeFirst(UIView.self, where: { $0.accessibilityIdentifier == "PL.Header" })
+        }).first else { return false }
+        let scroll: UIScrollView?
+        if let listClass = NSClassFromString(PlaylistListHook.targetName) {
+            scroll = root.eeveeFirst(UIScrollView.self) { $0.isKind(of: listClass) }
+        } else {
+            scroll = nil
+        }
+        return GlassPlaylist.actionRow(host: root, controls: header, scroll: scroll)
+    }
+}
+
+private var compactMixButtonKey: UInt8 = 0
+
+// Standalone on/off control for older iOS layouts. It modifies only the
+// local preference and never calls Spotify's Premium playlist-mix service.
+private final class LocalMixCompactButton: UIButton {
+    private var stateObserver: NSObjectProtocol?
+
+    init() {
+        super.init(frame: .zero)
+        accessibilityIdentifier = "Eevee.Playlist.LocalBeatMix"
+        accessibilityHint = "Tap to toggle local beat-aware crossfade. Hold to select 4, 8 or 16 beats."
+        addAction(UIAction { [weak self] _ in
+            LocalMixRuntime.setEnabled(!LocalMixRuntime.enabled)
+            self?.refresh()
+        }, for: .primaryActionTriggered)
+        stateObserver = NotificationCenter.default.addObserver(
+            forName: .eeveeLocalMixStateChanged, object: nil, queue: .main
+        ) { [weak self] _ in self?.refresh() }
+        refresh()
+    }
+    required init?(coder: NSCoder) { nil }
+    deinit {
+        if let stateObserver { NotificationCenter.default.removeObserver(stateObserver) }
+    }
+    func refresh() {
+        let on = LocalMixRuntime.enabled
+        if #available(iOS 15.0, *) {
+            var config = UIButton.Configuration.filled()
+            config.cornerStyle = .capsule
+            config.title = on ? "Mix On" : "Mix"
+            config.image = UIImage(systemName: "waveform")
+            config.imagePadding = 5
+            config.baseBackgroundColor = on ? UIColor.systemGreen : UIColor.darkGray
+            config.baseForegroundColor = on ? UIColor.black : UIColor.white
+            configuration = config
+        } else {
+            setTitle(on ? "Mix On" : "Mix", for: .normal)
+            setImage(UIImage(systemName: "waveform"), for: .normal)
+            backgroundColor = on ? .systemGreen : .darkGray
+            setTitleColor(on ? .black : .white, for: .normal)
+            layer.cornerRadius = 18
+        }
+        accessibilityLabel = on ? "Local Beat Mix On" : "Local Beat Mix Off"
+        accessibilityValue = on ? "On" : "Off"
+        menu = UIMenu(title: "Transition length", children: [4, 8, 16].map { value in
+            UIAction(title: "\(value) beats",
+                     state: LocalMixRuntime.beats == value ? .on : .off) { _ in
+                LocalMixRuntime.setBeats(value)
+            }
+        })
+        showsMenuAsPrimaryAction = false
+    }
+    static func mount(in root: UIView) {
+        if let existing = objc_getAssociatedObject(root, &compactMixButtonKey) as? LocalMixCompactButton {
+            existing.refresh()
+            return
+        }
+        let button = LocalMixCompactButton()
+        objc_setAssociatedObject(root, &compactMixButtonKey, button, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        root.addSubview(button)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            button.trailingAnchor.constraint(equalTo: root.safeAreaLayoutGuide.trailingAnchor, constant: -16),
+            button.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor, constant: 54),
+            button.heightAnchor.constraint(equalToConstant: 36)
+        ])
+    }
+    static func unmount(in root: UIView) {
+        guard let existing = objc_getAssociatedObject(root, &compactMixButtonKey) as? LocalMixCompactButton else { return }
+        existing.removeFromSuperview()
+        objc_setAssociatedObject(root, &compactMixButtonKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
+}
+
+class LocalMixPlaylistHook: ClassHook<UIViewController> {
+    typealias Group = LocalMixPlaylistGroup
+    static let targetName = "_TtC35ListUXPlatform_FreeTierPlaylistImpl17FTPViewController"
+
+    func viewDidLayoutSubviews() {
+        orig.viewDidLayoutSubviews()
+        guard let root = target.viewIfLoaded else { return }
+        if #available(iOS 26.0, *), LocalMixPlaylistUI.install(in: root) {
+            LocalMixCompactButton.unmount(in: root)
+        } else {
+            LocalMixCompactButton.mount(in: root)
+        }
+    }
+}
+
 @available(iOS 26.0, *)
 enum GlassPlaylist {
     static let meter = PerfMeter("Glass][Playlist")

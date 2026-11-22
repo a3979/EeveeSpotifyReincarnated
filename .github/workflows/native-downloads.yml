@@ -2,9 +2,9 @@ name: Pixie 1.4 — Spotify 9.2.0
 
 on:
   push:
-    paths: ['NativeDownloads/**', 'Sources/**', 'Tests/PixieStartupLogging/**', 'Makefile', '.github/workflows/native-downloads.yml']
+    paths: ['NativeDownloads/**', 'Tests/PixieStartupLogging/**', 'Makefile', 'modules/fishhook/**']
   pull_request:
-    paths: ['NativeDownloads/**', 'Sources/**', 'Tests/PixieStartupLogging/**', 'Makefile', '.github/workflows/native-downloads.yml']
+    paths: ['NativeDownloads/**', 'Tests/PixieStartupLogging/**', 'Makefile', 'modules/fishhook/**']
   workflow_dispatch:
     inputs:
       ipa_url:

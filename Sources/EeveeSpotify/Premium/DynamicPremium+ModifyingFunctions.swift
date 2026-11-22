@@ -36,13 +36,8 @@ func modifyRemoteConfiguration(_ configuration: inout UcsResponse) {
 private let propertyReplacements = [
     // Append when the account's config omits them, so they work without overwrite-configuration.
     EeveePropertyReplacement(name: "crossfade_enabled", scope: "ios-feature-settings", modification: .forceBool(true)),
-    EeveePropertyReplacement(name: "automix_enabled", scope: "ios-feature-settings", modification: .forceBool(true)),
-    // Experimental playlist Mix UI gates (Spotify 9.2.0).
-    // These only request client UI; account/server entitlement is not bypassed.
-    EeveePropertyReplacement(name: "is_enabled", scope: "ios-playlistcuration-mats", modification: .forceBool(true)),
-    EeveePropertyReplacement(name: "header_mix_button_enabled", scope: "ios-playlistcuration-mats", modification: .forceBool(true)),
-    EeveePropertyReplacement(name: "create_new_mixed_playlist_enabled", scope: "ios-playlistmixing-createmenuitemimpl", modification: .forceBool(true)),
-    EeveePropertyReplacement(name: "free_experience_enabled", scope: "ios-playlistcuration-mats", modification: .forceBool(true)),
+    // Spotify Premium playlist Mix controls are intentionally not forced here.
+    // A separate local toggle owns our experiment and must remain reversible.
 
     // ios featue only draws the row, the player core gates the fade on its own scope
     EeveePropertyReplacement(name: "crossfade_enabled", scope: "core-playback-setup", modification: .forceBool(true)),
@@ -420,16 +415,10 @@ func rewriteRemoteConfigurationData(_ data: Data) -> Data? {
     guard var response = try? ResolveResponse(serializedBytes: data),
           !response.configuration.assignedValues.isEmpty else { return nil }
 
-    // Spotify 9.2 consumes this v3 response rather than the old bootstrap/customize
-    // configuration. Apply Mix UI gates here as well; otherwise the experimental
-    // flags in propertyReplacements never reach the player or playlist UI.
-    let mixUIReplacements: [EeveePropertyReplacement] = [
-        EeveePropertyReplacement(name: "is_enabled", scope: "ios-playlistcuration-mats", modification: .forceBool(true)),
-        EeveePropertyReplacement(name: "header_mix_button_enabled", scope: "ios-playlistcuration-mats", modification: .forceBool(true)),
-        EeveePropertyReplacement(name: "create_new_mixed_playlist_enabled", scope: "ios-playlistmixing-createmenuitemimpl", modification: .forceBool(true)),
-        EeveePropertyReplacement(name: "free_experience_enabled", scope: "ios-playlistcuration-mats", modification: .forceBool(true))
-    ]
-    let replacements = EeveeCrossfade.replacements + mixUIReplacements
+    // Spotify's Premium Mix editor remains Spotify-controlled. Our local
+    // playlist action row supplies the Mix toggle and settings, so rewrite only
+    // native crossfade properties here and do not expose Premium editor gates.
+    let replacements = EeveeCrossfade.replacements
     func summary() -> String {
         replacements.compactMap { replacement in
             guard let scope = replacement.scope, let name = replacement.name else { return nil }

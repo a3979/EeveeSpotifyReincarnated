@@ -518,3 +518,9 @@ lyrics_source_restart_popup = "Restart Spotify so the new lyrics source is used 
 restart_later = "Later";
 manage_downloads = "Manage downloads";
 manage_downloads_subtitle = "Pixie offline downloads";
+
+// Client-only tempo-aware crossfade prototype.
+local_beat_mix = "Local Beat Mix";
+
+local_mix_studio = "Local Mix Studio";
+local_mix_studio_subtitle = "Two-deck mixing for audio stored on this iPhone";
