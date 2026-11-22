@@ -202,12 +202,123 @@ private final class MixPlaylistEditorController: UIViewController {
     @objc private func close() { dismiss(animated: true) }
 }
 
+
+ // Hijack only the touch surface of Spotify's *existing* Mix pill; no extra
+ // floating badge and no navigation to the Premium editor. The background,
+ // label, and alignment remain entirely owned by Spotify.
+ private final class SpotifyMixTouchInterceptor: UIButton {
+     override init(frame: CGRect) {
+         super.init(frame: frame)
+         backgroundColor = .clear
+         accessibilityIdentifier = "Eevee.Playlist.NativeMixInterceptor"
+         accessibilityLabel = "Mix"
+         accessibilityHint = "Tap to enable local Mix, or hold to edit transitions"
+         addTarget(self, action: #selector(toggle), for: .touchUpInside)
+         addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(edit(_:))))
+     }
+
+     required init?(coder: NSCoder) { nil }
+
+     @objc private func toggle() {
+         MixPlaylistRuntime.enable(!MixPlaylistRuntime.enabled)
+     }
+
+     @objc private func edit(_ gesture: UILongPressGestureRecognizer) {
+         guard gesture.state == .began else { return }
+         MixPlaylistSurface.presentEditor(from: self)
+     }
+ }
+
+ enum SpotifyNativeMixBinder {
+     private static weak var boundRoot: UIView?
+     private static weak var boundPill: UIView?
+     private static weak var interceptor: SpotifyMixTouchInterceptor?
+     private static var lastScan: CFAbsoluteTime = 0
+     private(set) static var scans = 0
+     private(set) static var binds = 0
+
+     static var attached: Bool {
+         guard let root = boundRoot, let pill = boundPill, let overlay = interceptor else { return false }
+         return root.window != nil && pill.isDescendant(of: root) && overlay.superview === pill
+     }
+
+     static func install(in root: UIView) {
+         guard root.window != nil else { return }
+         if attached && boundRoot === root {
+             if let overlay = interceptor, let pill = boundPill {
+                 overlay.frame = pill.bounds
+                 pill.bringSubviewToFront(overlay)
+             }
+             return
+         }
+         let now = CFAbsoluteTimeGetCurrent()
+         guard now - lastScan >= 0.5 else { return }
+         lastScan = now
+         scans += 1
+         guard let pill = findNativePill(in: root) else { return }
+         interceptor?.removeFromSuperview()
+         let overlay = SpotifyMixTouchInterceptor(frame: pill.bounds)
+         overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+         pill.addSubview(overlay)
+         pill.bringSubviewToFront(overlay)
+         boundRoot = root
+         boundPill = pill
+         interceptor = overlay
+         binds += 1
+         eeveeLog("[MixNative] Bound original Spotify playlist Mix pill")
+     }
+
+     private static func findNativePill(in root: UIView) -> UIView? {
+         var queue: [UIView] = [root]
+         var offset = 0
+         var visited = 0
+         while offset < queue.count && visited < 1600 {
+             let view = queue[offset]
+             offset += 1
+             visited += 1
+             if view.isHidden || view.alpha < 0.03 { continue }
+             if view is SpotifyMixTouchInterceptor || view is MixPlaylistButton { continue }
+             if view.accessibilityIdentifier?.hasPrefix("Eevee.Playlist.") == true { continue }
+             let text = (view as? UILabel)?.text?.trimmingCharacters(in: .whitespacesAndNewlines)
+                 ?? (view as? UIButton)?.currentTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+                 ?? view.accessibilityLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
+             if let text, ["mix", "mix playlist", "mix this playlist"].contains(text.lowercased()) {
+                 if let pill = nearestPill(for: view, inside: root) { return pill }
+             }
+             // The native Mix can be hosted by SwiftUI; scan its view
+             // hierarchy without asking Spotify for Premium entitlements.
+             queue.append(contentsOf: view.subviews)
+         }
+         return nil
+     }
+
+     private static func nearestPill(for label: UIView, inside root: UIView) -> UIView? {
+         var node: UIView? = label
+         var steps = 0
+         var best: UIView?
+         while let view = node, view !== root, steps < 9 {
+             defer { node = view.superview; steps += 1 }
+             let frame = view.bounds
+             let w = frame.width, h = frame.height
+             guard view.isUserInteractionEnabled,
+                   w >= 58, w <= 180, h >= 30, h <= 72,
+                   view.window != nil else { continue }
+             if view.accessibilityIdentifier?.hasPrefix("Eevee.") == true { continue }
+             // Prefer a real button/control or a pill-sized hosting wrapper
+             // rather than a text label. Do not cover entire action toolbars.
+             if view is UIControl { return view }
+             best = view
+         }
+         return best
+     }
+ }
+
 class MixPlaylistFallbackHook: ClassHook<UIViewController> {
     typealias Group = MixPlaylistFallbackGroup
     static let targetName = "_TtC35ListUXPlatform_FreeTierPlaylistImpl17FTPViewController"
 
     func viewDidLayoutSubviews() {
         orig.viewDidLayoutSubviews()
-        if let root = target.viewIfLoaded { MixPlaylistSurface.installFallback(in: root) }
+        if let root = target.viewIfLoaded { SpotifyNativeMixBinder.install(in: root) }
     }
 }
