@@ -18,7 +18,8 @@ enum MixCurve: String, Codable, CaseIterable, Identifiable {
 enum MixEffect: String, Codable, CaseIterable, Identifiable {
     case none = "Clean"
     case bassSwap = "Bass swap"
-    case filter = "Filter sweep"
+    case filter = "Low-pass sweep"
+    case highPass = "High-pass sweep"
     case echo = "Echo out"
     case reverb = "Reverb tail"
     var id: String { rawValue }
@@ -162,7 +163,7 @@ enum LocalMixAnalysis {
     private let engine = AVAudioEngine()
     private let decks = [AVAudioPlayerNode(), AVAudioPlayerNode()]
     private let pitches = [AVAudioUnitTimePitch(), AVAudioUnitTimePitch()]
-    private let equalizers = [AVAudioUnitEQ(numberOfBands: 4), AVAudioUnitEQ(numberOfBands: 4)]
+    private let equalizers = [AVAudioUnitEQ(numberOfBands: 5), AVAudioUnitEQ(numberOfBands: 5)]
     private let echoes = [AVAudioUnitDelay(), AVAudioUnitDelay()]
     private let reverbs = [AVAudioUnitReverb(), AVAudioUnitReverb()]
     private var openFiles: [AVAudioFile?] = [nil, nil]
@@ -218,6 +219,8 @@ enum LocalMixAnalysis {
             bands[2].frequency = 6000
             bands[3].filterType = .lowPass
             bands[3].frequency = 19000
+            bands[4].filterType = .highPass
+            bands[4].frequency = 35
             for band in bands { band.bypass = false }
             delay.wetDryMix = 0
             delay.feedback = 24
@@ -500,6 +503,9 @@ enum LocalMixAnalysis {
         case .filter:
             sourceEQ[3].frequency = Float(19000 * pow(300.0 / 19000, p))
             targetEQ[3].frequency = Float(500 * pow(19000.0 / 500, p))
+        case .highPass:
+            sourceEQ[4].frequency = Float(35 * pow(10000.0 / 35, p))
+            targetEQ[4].frequency = Float(10000 * pow(35.0 / 10000, p))
         case .echo:
             echoes[from].wetDryMix = Float(45 * p)
             echoes[to].wetDryMix = 0
@@ -513,6 +519,7 @@ enum LocalMixAnalysis {
         for eq in equalizers {
             for band in eq.bands { band.gain = 0 }
             eq.bands[3].frequency = 19000
+            eq.bands[4].frequency = 35
         }
         for d in echoes { d.wetDryMix = 0 }
         for r in reverbs { r.wetDryMix = 0 }
