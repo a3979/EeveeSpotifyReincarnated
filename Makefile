@@ -17,6 +17,7 @@ $(shell printf 'enum GeneratedConfig {\n    static let repoSlug = "%s"\n    stat
 
 EeveeSpotify_FILES = $(shell find Sources/EeveeSpotify -name '*.swift') $(shell find Sources/EeveeSpotifyC -name '*.m' -o -name '*.c' -o -name '*.mm' -o -name '*.cpp')
 EeveeSpotify_FILES += Sources/EeveeSpotifyC/PixieArtistFollow.x
+# Full Spotify 9.2.2 IPA packaging pass uses the user's temporary base-IPA upload.
 # Local Beat Mix uses the existing Spotify AudioUnit callback plus AVFoundation
 # scheduling hooks. Its observer is read-only, so no audio buffers are copied.
 EeveeSpotify_FILES += NativeDownloads/src/Diagnostics/AudioProbe.c
