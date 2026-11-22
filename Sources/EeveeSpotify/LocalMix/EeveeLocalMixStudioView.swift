@@ -79,7 +79,7 @@ struct EeveeLocalMixStudioView: View {
 
     var body: some View {
         List {
-            Section(header: Text("LOCAL MIX STUDIO"), footer:
+            Section(header: Text("LOCAL FILE MIX STUDIO"), footer:
                 Text("Two-deck mixing for audio files stored on this iPhone. Spotify's protected streaming catalog cannot be used as DJ decks. Pause Spotify playback before starting a local mix.")) {
                 HStack {
                     Image(systemName: "waveform.path").foregroundColor(.green)
