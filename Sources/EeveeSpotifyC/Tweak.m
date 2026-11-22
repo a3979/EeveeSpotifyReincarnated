@@ -4,6 +4,7 @@
 #import <objc/runtime.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdatomic.h>
 #import "Tweak.h"
 
 #if NO_JBROOT
@@ -65,11 +66,11 @@ NSString *MixRebuildDescribeNativeMixClasses(void) {
 static __weak id mixObservedPreference;
 static id (*mixOriginalPreferenceInit)(id, SEL) = NULL;
 static void (*mixOriginalPreferenceInject)(id, SEL, id) = NULL;
-static unsigned mixPreferenceCaptureEvents;
+static atomic_uint mixPreferenceCaptureEvents;
 
 static id mixCapturedPreferenceInit(id receiver, SEL command) {
     id result = mixOriginalPreferenceInit(receiver, command);
-    if (result) { mixObservedPreference = result; mixPreferenceCaptureEvents++; }
+    if (result) { mixObservedPreference = result; atomic_fetch_add_explicit(&mixPreferenceCaptureEvents, 1, memory_order_relaxed); }
     return result;
 }
 static void mixCapturedPreferenceInject(id receiver, SEL command, id provider) {
@@ -106,7 +107,18 @@ int MixRebuildInstallPreferenceCapture(void) {
     return bits;
 }
 id MixRebuildObservedPreferenceObject(void) { return mixObservedPreference; }
-unsigned int MixRebuildPreferenceCaptureEvents(void) { return mixPreferenceCaptureEvents; }
+unsigned int MixRebuildPreferenceCaptureEvents(void) { return atomic_load_explicit(&mixPreferenceCaptureEvents, memory_order_relaxed); }
+
+NSInteger MixRebuildReadNativeCrossfadeTimeOrNeg1(id target) {
+    SEL selector = NSSelectorFromString(@"audioCrossfadeTime");
+    if (!target || ![target respondsToSelector:selector]) return -1;
+    return ((NSInteger (*)(id, SEL))objc_msgSend)(target, selector);
+}
+int MixRebuildReadNativeCrossfadeEnabledOrNeg1(id target) {
+    SEL selector = NSSelectorFromString(@"audioCrossfade");
+    if (!target || ![target respondsToSelector:selector]) return -1;
+    return ((BOOL (*)(id, SEL))objc_msgSend)(target, selector) ? 1 : 0;
+}
 
 int MixRebuildReadNativeCrossfade(id target, NSInteger *milliseconds, BOOL *enabled) {
     if (!target || !milliseconds || !enabled) return 0;
