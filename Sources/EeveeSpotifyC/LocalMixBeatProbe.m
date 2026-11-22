@@ -1,5 +1,5 @@
-// Local Beat Mix experiment: listen to Spotify's already-decoded PCM from the
-// optional AudioProbe companion, estimate pulse and adapt native crossfade.
+// Local Beat Mix: observe Spotify's already-decoded PCM through bundled
+// AVFoundation scheduling hooks, estimate pulse and adapt native crossfade.
 // No track downloading, entitlement forgery or network service required.
 // This does NOT create Spotify's Premium Mix editor or provide two-deck mixing.
 #include <AudioToolbox/AudioToolbox.h>
