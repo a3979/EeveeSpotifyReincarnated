@@ -55,7 +55,7 @@ struct MixRebuildView: View {
                     Text("Position")
                     Spacer()
                     Text(timestamp(mixer.position))
-                        .monospacedDigit()
+                        .font(.system(size: 14, design: .monospaced))
                         .foregroundColor(.secondary)
                 }
                 if mixer.isPlaying && mixer.currentIndex < mixer.tracks.count {
