@@ -17,6 +17,11 @@ on:
       - 'Sources/EeveeSpotify/Settings/Views/EeveeSettingsView.swift'
       - 'Sources/EeveeSpotifyC/**'
       - 'NativeDownloads/src/Diagnostics/AVAudioHooks.m'
+      - 'NativeDownloads/src/Diagnostics/AudioProbe.c'
+      - 'NativeDownloads/src/Diagnostics/DiagnosticsPreferences.m'
+      - 'NativeDownloads/src/Diagnostics/AudioProbeBackend.h'
+      - 'NativeDownloads/src/Public/Diagnostics.h'
+      - 'modules/fishhook/**'
       - 'NativeDownloads/src/Public/AudioProbe.h'
       - '.github/workflows/build-eevee-7.5.0-spotify-9.2.2.yml'
   workflow_dispatch:
