@@ -208,7 +208,7 @@ struct EeveeLocalMixStudioView: View {
 
                 Section(header: Text("MIX COVER")) {
                     ZStack(alignment: .topLeading) {
-                        LinearGradient(colors: [.black, Color.green.opacity(0.65), Color(red: 0.1, green: 0.65, blue: 0.6)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        LinearGradient(gradient: Gradient(colors: [.black, Color.green.opacity(0.65), Color(red: 0.1, green: 0.65, blue: 0.6)]), startPoint: .topLeading, endPoint: .bottomTrailing)
                         VStack(alignment: .leading, spacing: 12) {
                             if studio.project.sticker != "NONE" {
                                 Text(studio.project.sticker)
