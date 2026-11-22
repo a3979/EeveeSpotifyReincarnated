@@ -25,7 +25,7 @@ enum MixEffect: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-struct MixTrack: Identifiable, Codable, Equatable {
+struct MixTrack: Identifiable, Codable, Equatable, Sendable {
     var id = UUID()
     var file: String
     var title: String
@@ -262,35 +262,59 @@ enum LocalMixAnalysis {
 
     func importFiles(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
+        do {
+            try FileManager.default.createDirectory(
+                at: Self.audioFolder,
+                withIntermediateDirectories: true
+            )
+        } catch {
+            diagnostic = "Could not prepare audio storage: \(error.localizedDescription)"
+            return
+        }
         preparing = true
-        try? FileManager.default.createDirectory(at: Self.audioFolder,
-                                                  withIntermediateDirectories: true)
         let audioFolder = Self.audioFolder
-        Task.detached(priority: .utility) { [weak self] in
-            var loaded = [MixTrack]()
-            for url in urls {
-                let granted = url.startAccessingSecurityScopedResource()
-                defer { if granted { url.stopAccessingSecurityScopedResource() } }
-                let filename = UUID().uuidString + "-" + url.lastPathComponent
-                let target = audioFolder.appendingPathComponent(filename)
-                do {
-                    try FileManager.default.copyItem(at: url, to: target)
-                    let result = LocalMixAnalysis.analyze(target)
-                    guard result.duration > 0 else { continue }
-                    let musicalKey = LocalMixKeyAnalyzer.estimate(target)
-                    let title = url.deletingPathExtension().lastPathComponent
-                    loaded.append(MixTrack(file: filename, title: title, duration: result.duration,
-                                           bpm: result.bpm, musicalKey: musicalKey, waveform: result.wave))
-                } catch { continue }
-            }
-            await MainActor.run {
-                self?.project.tracks.append(contentsOf: loaded)
-                self?.preparing = false
-                self?.diagnostic = loaded.isEmpty
-                    ? "No compatible audio files were imported"
-                    : "Imported \(loaded.count) audio tracks"
-                self?.save()
-            }
+
+        // Keep AVFoundation file work off the main actor, but return only Sendable
+        // track metadata before mutating the shared project on the main actor.
+        Task { [weak self] in
+            let importedTracks = await Task.detached(priority: .utility) { () -> [MixTrack] in
+                var loaded = [MixTrack]()
+                for url in urls {
+                    let granted = url.startAccessingSecurityScopedResource()
+                    defer { if granted { url.stopAccessingSecurityScopedResource() } }
+                    let filename = UUID().uuidString + "-" + url.lastPathComponent
+                    let target = audioFolder.appendingPathComponent(filename)
+                    do {
+                        try FileManager.default.copyItem(at: url, to: target)
+                        let result = LocalMixAnalysis.analyze(target)
+                        guard result.duration > 0 else {
+                            try? FileManager.default.removeItem(at: target)
+                            continue
+                        }
+                        let musicalKey = LocalMixKeyAnalyzer.estimate(target)
+                        let title = url.deletingPathExtension().lastPathComponent
+                        loaded.append(MixTrack(
+                            file: filename,
+                            title: title,
+                            duration: result.duration,
+                            bpm: result.bpm,
+                            musicalKey: musicalKey,
+                            waveform: result.wave
+                        ))
+                    } catch {
+                        try? FileManager.default.removeItem(at: target)
+                    }
+                }
+                return loaded
+            }.value
+
+            guard let self else { return }
+            self.project.tracks.append(contentsOf: importedTracks)
+            self.preparing = false
+            self.diagnostic = importedTracks.isEmpty
+                ? "No compatible audio files were imported"
+                : "Imported \(importedTracks.count) audio tracks"
+            self.save()
         }
     }
 
