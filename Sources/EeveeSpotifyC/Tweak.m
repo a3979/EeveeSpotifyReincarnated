@@ -3,6 +3,7 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 #include <string.h>
+#include <stdlib.h>
 #import "Tweak.h"
 
 #if NO_JBROOT
@@ -53,7 +54,7 @@ NSString *MixRebuildDescribeNativeMixClasses(void) {
                             name, methodCount, [selectors componentsJoinedByString:@", "]]];
     }
     free(classes);
-    return results.count ? [results componentsJoinedByString:@"\\n"]
+    return results.count ? [results componentsJoinedByString:@"\n"]
                          : @"No native mixing classes exposed to Objective-C runtime";
 }
 
