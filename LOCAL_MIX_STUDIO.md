@@ -31,7 +31,7 @@ Local Mix Studio is an independent two-deck audio mixer built into EeveeSpotify.
 The CI workflow compiles the current source from this branch and then injects it into a user-supplied Spotify 9.2.2 IPA. It deliberately does not bundle or redistribute Spotify's app binary.
 
 1. Download your own verified base IPA from your Library. The file used for this project was verified as bundle `com.spotify.client`, version `9.2.2`, build `920202587`.
-2. Run `Tools/upload-spotify-922-ipa.ps1` on Windows and select that IPA. The helper uploads it to Litterbox for 72 hours, prints a direct-download URL, and copies the URL to your clipboard.
+2. Double-click `Tools/upload-spotify-922-ipa.bat` on Windows and select that IPA. The helper uploads it to Litterbox for 72 hours, prints a direct-download URL, and copies the URL to your clipboard.
 3. In GitHub, open **Actions → Build EeveeSpotify 7.5.0 + Local Mix Studio (Spotify 9.2.2) → Run workflow** on branch `local-mix-studio-v2`.
 4. Paste the direct-download URL into `ipa_url`. The workflow checks the ZIP, bundle ID and exact Spotify version before injection.
 5. Download the `EeveeSpotify-7.5.0-Spotify-9.2.2-LocalMixStudio` workflow artifact when the run succeeds.
