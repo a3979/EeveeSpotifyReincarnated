@@ -52,6 +52,15 @@ class PreferencesCrossfadeHook: ClassHook<NSObject> {
 }
 
 enum EeveeCrossfade {
+    // These are *capability* flags, not proof that the Spotify Free playback
+    // pipeline creates an incoming deck. Register them before RemoteFlags.prepare.
+    static let flags: [String: Any] = [
+        "ios-feature-settings.crossfade_enabled": true,
+        "core-playback-setup.crossfade_enabled": true,
+        "ios-feature-settings.use_playback_settings_crossfade": false,
+        "playback-settings.use_playback_settings_crossfade": false
+    ]
+
     // forced in 9.2's remote configuration (rewriteRemoteConfigurationData), where a Spotify experiment now
     // turns crossfade off: the settings row, the core's own gate, and both sides reading crossfade from the
     // local prefs the hook above keeps in step, rather than the server's playback settings.
@@ -64,6 +73,7 @@ enum EeveeCrossfade {
 }
 
 func activateEeveeCrossfadeForce() {
+    RemoteFlags.shared.force(EeveeCrossfade.flags, by: "PlaylistMixCrossfade")
     guard NSClassFromString(PreferencesCrossfadeHook.targetName) != nil else {
         eeveeLog("[EeveeSpotify][Crossfade] Skipped: \(PreferencesCrossfadeHook.targetName) not found")
         return
