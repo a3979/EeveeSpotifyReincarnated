@@ -152,6 +152,7 @@ enum LocalMixAnalysis {
     @Published var project = MixStudioProject()
     @Published var isPlaying = false
     @Published var isTransitioning = false
+    @Published var isManualFaderActive = false
     @Published var isPreview = false
     @Published var currentIndex = 0
     @Published var position = 0.0
@@ -234,14 +235,21 @@ enum LocalMixAnalysis {
 
     private func ensureStarted() throws {
         if !engine.isRunning {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
-            try AVAudioSession.sharedInstance().setActive(true)
+            let session = AVAudioSession.sharedInstance()
+            // Spotify already owns the app's playback session. Preserve its category
+            // when it is already correct instead of reconfiguring it on every mix start.
+            if session.category != .playback {
+                try session.setCategory(.playback, mode: .default, options: [])
+            }
+            try session.setActive(true)
             try engine.start()
         }
         if tickTimer == nil {
-            tickTimer = Timer.scheduledTimer(withTimeInterval: 0.075, repeats: true) { [weak self] _ in
+            let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
                 Task { @MainActor in self?.tick() }
             }
+            RunLoop.main.add(timer, forMode: .common)
+            tickTimer = timer
         }
     }
 
@@ -372,6 +380,8 @@ enum LocalMixAnalysis {
             if !isPlaying {
                 if currentIndex >= project.tracks.count { currentIndex = 0 }
                 activeDeck = 0
+                isManualFaderActive = false
+                resetEffects()
                 try schedule(currentIndex, on: 0, at: position)
                 decks[0].volume = 1
                 decks[1].volume = 0
@@ -386,13 +396,27 @@ enum LocalMixAnalysis {
     func pause() {
         guard isPlaying else { return }
         if isTransitioning {
-            // Resume from outgoing deck's current location rather than a half-scheduled pair.
+            // Resume from whichever deck is currently dominant, not from a
+            // half-faded track that may already be nearly inaudible.
+            let outgoing = activeDeck
+            let incoming = 1 - outgoing
+            if fadeProgress >= 0.5 && currentIndex + 1 < project.tracks.count {
+                position = played(on: incoming)
+                currentIndex += 1
+                activeDeck = incoming
+            } else {
+                position = played(on: outgoing)
+            }
+        } else {
             position = played(on: activeDeck)
-            isTransitioning = false
-        } else { position = played(on: activeDeck) }
+        }
         decks.forEach { $0.stop() }
         isPlaying = false
+        isTransitioning = false
+        isManualFaderActive = false
         isPreview = false
+        fadeProgress = 0
+        resetEffects()
     }
 
     func stop() {
@@ -400,9 +424,11 @@ enum LocalMixAnalysis {
         position = 0
         isPlaying = false
         isTransitioning = false
+        isManualFaderActive = false
         isPreview = false
         fadeProgress = 0
         activeDeck = 0
+        resetEffects()
     }
 
     func next() {
@@ -434,6 +460,10 @@ enum LocalMixAnalysis {
     }
 
     func startTransition() {
+        beginTransition(manual: false)
+    }
+
+    private func beginTransition(manual: Bool) {
         guard isPlaying && !isTransitioning,
               currentIndex + 1 < project.tracks.count else { return }
         do {
@@ -441,43 +471,69 @@ enum LocalMixAnalysis {
             let next = currentIndex + 1
             let setting = project.transition(at: currentIndex)
             try schedule(next, on: nextDeck, at: setting.incomingCue)
-            if setting.syncTempo {
-                let a = project.tracks[currentIndex].bpm
-                let b = project.tracks[next].bpm
-                if a > 0 && b > 0 {
-                    let ratio = a / b
-                    pitches[nextDeck].rate = Float(min(1.10, max(0.90, ratio)))
-                }
+            pitches[nextDeck].rate = 1
+            if setting.syncTempo,
+               let rate = LocalMixMath.tempoRate(
+                    outgoingBPM: project.tracks[currentIndex].bpm,
+                    incomingBPM: project.tracks[next].bpm
+               ) {
+                pitches[nextDeck].rate = rate
             }
-            fadeDuration = max(0.25, setting.seconds)
-            fadeStartedAt = played(on: activeDeck)
+            let outgoingPosition = played(on: activeDeck)
+            let remaining = project.tracks[currentIndex].duration - outgoingPosition
+            fadeDuration = LocalMixMath.transitionDuration(
+                requested: setting.seconds,
+                remaining: remaining,
+                outroTrim: setting.outroTrim
+            )
+            fadeStartedAt = outgoingPosition
             isTransitioning = true
+            isManualFaderActive = manual
             fadeProgress = 0
             decks[nextDeck].volume = 0
             decks[nextDeck].play()
-        } catch { diagnostic = "Transition failed: \(error.localizedDescription)" }
+            diagnostic = manual ? "Manual crossfader ready" : "Transition started"
+        } catch {
+            isTransitioning = false
+            isManualFaderActive = false
+            diagnostic = "Transition failed: \(error.localizedDescription)"
+        }
     }
 
     func setManualFader(_ progress: Double) {
-        guard isPlaying else { return }
-        if !isTransitioning { startTransition() }
+        guard isPlaying, currentIndex + 1 < project.tracks.count else { return }
+        if !isTransitioning {
+            beginTransition(manual: true)
+        } else {
+            // Once the user touches the crossfader, stop the timed fade from
+            // fighting the slider. The incoming deck remains cued and playing.
+            isManualFaderActive = true
+        }
         guard isTransitioning else { return }
-        applyTransition(progress: min(1, max(0, progress)))
+        let value = min(1, max(0, progress))
+        applyTransition(progress: value)
+        if value >= 0.999 { finishTransition() }
+    }
+
+    func cancelManualTransition() {
+        guard isTransitioning, isManualFaderActive else { return }
+        let incoming = 1 - activeDeck
+        decks[incoming].stop()
+        decks[incoming].volume = 0
+        decks[activeDeck].volume = 1
+        isTransitioning = false
+        isManualFaderActive = false
+        fadeProgress = 0
+        resetEffects()
+        diagnostic = "Manual transition cancelled"
     }
 
     private func applyTransition(progress p: Double) {
         let setting = project.transition(at: currentIndex)
-        fadeProgress = p
-        var outGain: Double
-        var inGain: Double
-        switch setting.curve {
-        case .linear: outGain = 1 - p; inGain = p
-        case .equalPower: outGain = cos(p * .pi / 2); inGain = sin(p * .pi / 2)
-        case .smooth:
-            let s = p * p * (3 - 2 * p)
-            outGain = cos(s * .pi / 2); inGain = sin(s * .pi / 2)
-        case .cut: outGain = p < 0.5 ? 1 : 0; inGain = p < 0.5 ? 0 : 1
-        }
+        let gains = LocalMixMath.gains(curve: setting.curve.rawValue, progress: p)
+        fadeProgress = min(1, max(0, p))
+        var outGain = gains.outgoing
+        var inGain = gains.incoming
         let from = activeDeck, to = 1 - from
         outGain *= Double(setting.gain)
         inGain *= Double(setting.gain)
@@ -537,8 +593,12 @@ enum LocalMixAnalysis {
         currentIndex += 1
         position = played(on: incoming)
         isTransitioning = false
+        isManualFaderActive = false
         fadeProgress = 0
         resetEffects()
+        if !isPreview {
+            diagnostic = "Transition complete · \(project.tracks[currentIndex].title)"
+        }
         if isPreview {
             // A preview ends after the transition; do not play the whole playlist.
             pause()
@@ -550,6 +610,16 @@ enum LocalMixAnalysis {
         guard isPlaying, project.tracks.indices.contains(currentIndex) else { return }
         position = played(on: activeDeck)
         if isTransitioning {
+            if isManualFaderActive {
+                // Never let the timer overwrite a user-controlled crossfader.
+                // If the outgoing file ends while the fader is held, complete
+                // the handoff rather than leaving the output silent.
+                if position >= project.tracks[currentIndex].duration - 0.10 {
+                    applyTransition(progress: 1)
+                    finishTransition()
+                }
+                return
+            }
             let p = (position - fadeStartedAt) / max(fadeDuration, 0.1)
             applyTransition(progress: min(1, max(0, p)))
             if p >= 1 { finishTransition() }
