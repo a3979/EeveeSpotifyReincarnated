@@ -1,4 +1,5 @@
 import Foundation
+import ObjectiveC.runtime
 import Orion
 
 // The fade engine reads crossfade-enable from the persisted prefs; the duration
