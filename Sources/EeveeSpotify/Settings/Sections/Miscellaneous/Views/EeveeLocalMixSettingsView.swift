@@ -19,7 +19,7 @@ struct EeveeLocalMixSettingsView: View {
         List {
             Section(
                 header: Text("Local Beat Mix"),
-                footer: Text("Experimental beat-aware crossfade for Spotify playback. Runs on your iPhone using decoded audio, not Spotify's cloud Mix service. It is not the Premium Mix editor.")
+                footer: Text("Local Beat Mix analyzes scheduled audio on your iPhone and adjusts Spotify's existing crossfade. It does not call Spotify's cloud Mix service or unlock the Premium Mix editor.")
             ) {
                 Toggle("Enable local beat transitions", isOn: $enabled)
                 Picker("Transition length", selection: $beats) {
@@ -51,9 +51,9 @@ struct EeveeLocalMixSettingsView: View {
             }
 
             Section(
-                footer: Text("To arm the crossfade, open Spotify Settings → Playback, switch Crossfade on and move its duration above zero once. Play a song with a steady beat while the probe learns. At the next stable update, Local Beat Mix adjusts Spotify's native crossfade duration toward 4/8/16 beats. If it cannot detect tempo, Spotify's original crossfade stays in control.")
+                footer: Text("Local Beat Mix arms Spotify's normal crossfade when enabled. Start a playlist and let the analyzer listen for a stable tempo. It then adjusts the crossfade duration toward the selected 4/8/16-beat window. If no reliable tempo is detected, your saved crossfade duration is retained.")
             ) {
-                Text("This is a client-side prototype. A smooth overlap is possible only when Spotify's normal crossfade engine works; manual EQ, cue points, saving mixed playlists and cloud Mix features are not included.")
+                Text("Spotify's own playback engine performs the overlap. This prototype controls crossfade timing locally; independent streaming decks, per-track cue points, EQ automation and Spotify's cloud mixed-playlist editor are not implemented.")
                     .font(.footnote)
                     .foregroundColor(.secondary)
             }
@@ -66,6 +66,11 @@ struct EeveeLocalMixSettingsView: View {
             refresh()
         }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: .eeveeLocalMixStateChanged)) { _ in
+            enabled = LocalMixRuntime.enabled
+            beats = LocalMixRuntime.beats
+            refresh()
+        }
         .onChange(of: enabled) { newValue in
             LocalMixRuntime.setEnabled(newValue)
             refresh()
