@@ -64,7 +64,7 @@ jobs:
           PROTO=$(find "$RUNNER_TEMP/deb" -type d -name EeveeSwiftProtobuf.framework | head -1)
           BUNDLE=$(find "$RUNNER_TEMP/deb" -type d -name EeveeSpotify.bundle | head -1)
           test -s "$DY" && test -d "$PROTO"
-          grep -aFq 'MixRebuildDeck' "$DY" || { echo "::error::Missing rebuilt audio deck"; exit 1; }
+          grep -aFq 'Eevee.Playlist.Mix' "$DY" || { echo "::error::Missing native playlist Mix control"; exit 1; }
           if otool -L "$DY" | tail -n +2 | grep -Ei '/var/jb|libroot|roothide'; then
             echo "::error::Sideload dylib links jailbreak-only libraries"; exit 1
           fi
@@ -116,7 +116,7 @@ jobs:
           test -s "$APP/Frameworks/EeveeSpotify.dylib"
           test -s "$APP/Frameworks/Orion.framework/Orion"
           test -s "$APP/Frameworks/EeveeSwiftProtobuf.framework/EeveeSwiftProtobuf"
-          grep -aFq 'MixRebuildDeck' "$APP/Frameworks/EeveeSpotify.dylib"
+          grep -aFq 'Eevee.Playlist.Mix' "$APP/Frameworks/EeveeSpotify.dylib"
           echo "IPA validated. Device playback requires iPhone test."
       - uses: actions/upload-artifact@v4
         with:
