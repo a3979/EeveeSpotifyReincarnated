@@ -124,7 +124,9 @@ enum LocalMixAnalysis {
 
         // Onset strength of the amplitude envelope, autocorrelated over 65–180 BPM.
         let mean = levels.reduce(0, +) / Double(levels.count)
-        let onset = zip(levels.dropFirst(), levels).map { max(0, $0 - $1 - mean * 0.07) }
+        let onset = zip(levels.dropFirst(), levels).map { pair in
+            max(0, pair.0 - pair.1 - mean * 0.07)
+        }
         guard onset.count > 100 else { return (duration, wave, 0) }
         let envHz = sampleRate / Double(window)
         let lower = max(1, Int(envHz * 60 / 180))
