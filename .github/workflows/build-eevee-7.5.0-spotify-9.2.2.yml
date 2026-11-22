@@ -183,7 +183,7 @@ jobs:
           if [ -n "${EEVEE_BUNDLE:-}" ] && [ -d "$EEVEE_BUNDLE" ]; then ADD+=("$EEVEE_BUNDLE"); fi
           cyan -i "$RUNNER_TEMP/spotify.ipa"             -o outputs/EeveeSpotify-7.5.0-Spotify-9.2.2-LocalBeatMix.ipa             -f "${ADD[@]}" -c 9 -m 16.1 -du
           chmod +x Tools/strip-ipa.sh
-          Tools/strip-ipa.sh outputs/EeveeSpotify-7.5.0-Spotify-9.2.2-LocalMixStudio.ipa
+          Tools/strip-ipa.sh outputs/EeveeSpotify-7.5.0-Spotify-9.2.2-LocalBeatMix.ipa
 
       - name: Validate packaged IPA
         if: github.event_name == 'workflow_dispatch'
