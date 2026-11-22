@@ -24,6 +24,7 @@ private struct LocalMixWaveformView: View {
     let data: [Float]
     let tint: Color
     let bpm: Double
+    let duration: Double
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -39,16 +40,19 @@ private struct LocalMixWaveformView: View {
                     LocalMixWaveform(samples: data)
                         .stroke(tint, style: StrokeStyle(lineWidth: 1.3, lineCap: .round))
                         .padding(.vertical, 3)
-                    // Beat-grid guidance, not a claim to have Spotify's exact beat map.
+                    // Approximate bar markers derived from local BPM, not Spotify's exact downbeats.
                     if bpm > 0 {
-                        HStack(spacing: 0) {
-                            ForEach(0..<12, id: \.self) { _ in
-                                Rectangle().fill(Color.white.opacity(0.12))
-                                    .frame(width: 0.5)
-                                Spacer(minLength: 0)
-                            }
+                        let analyzedDuration = max(1, min(120, duration))
+                        let bars = min(128, Int(analyzedDuration * bpm / 240))
+                        ForEach(0..<max(0, bars), id: \.self) { bar in
+                            Rectangle()
+                                .fill(Color.white.opacity(bar % 4 == 0 ? 0.26 : 0.10))
+                                .frame(width: 1)
+                                .position(
+                                    x: geo.size.width * CGFloat(Double(bar) * 240 / bpm / analyzedDuration),
+                                    y: geo.size.height / 2
+                                )
                         }
-                        .padding(.horizontal, 7)
                     }
                 }
             }
@@ -396,11 +400,13 @@ private struct EeveeMixTransitionEditor: View {
                     LocalMixWaveformView(title: "OUT · " + studio.project.tracks[index].title,
                                          data: studio.project.tracks[index].waveform,
                                          tint: .green,
-                                         bpm: studio.project.tracks[index].bpm)
+                                         bpm: studio.project.tracks[index].bpm,
+                                         duration: studio.project.tracks[index].duration)
                     LocalMixWaveformView(title: "IN · " + studio.project.tracks[index + 1].title,
                                          data: studio.project.tracks[index + 1].waveform,
                                          tint: .cyan,
-                                         bpm: studio.project.tracks[index + 1].bpm)
+                                         bpm: studio.project.tracks[index + 1].bpm,
+                                         duration: studio.project.tracks[index + 1].duration)
                     Button("Preview these two songs") {
                         persist()
                         studio.preview(at: index)
