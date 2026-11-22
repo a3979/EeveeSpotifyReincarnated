@@ -59,6 +59,8 @@ enum LocalMixRuntime {
     }
 
     static func activate() {
+        let probeStatus = EeveeLocalMixInstallAudioProbe()
+        eeveeLog("[LocalBeatMix] PCM hook install status=%d", probeStatus)
         EeveeLocalMixSetEnabled(enabled)
         if enabled {
             pendingApply = preferences == nil
