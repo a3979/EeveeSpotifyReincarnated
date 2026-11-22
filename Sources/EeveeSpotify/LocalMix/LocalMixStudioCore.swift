@@ -486,6 +486,32 @@ enum LocalMixAnalysis {
         } catch { diagnostic = "Preview failed: \(error.localizedDescription)" }
     }
 
+    /// The planner only controls audio we have locally decoded on both decks.
+    /// Spotify streaming is intentionally never passed through this engine.
+    private func transitionPlan(at index: Int, remaining: Double) -> LocalMixTransitionPlan {
+        let setting = project.transition(at: index)
+        let outgoing = project.tracks[index], incoming = project.tracks[index + 1]
+        guard setting.automatic else {
+            return LocalMixTransitionPlan(
+                duration: LocalMixMath.transitionDuration(
+                    requested: setting.seconds, remaining: remaining, outroTrim: setting.outroTrim
+                ),
+                tempoRate: setting.syncTempo
+                    ? LocalMixMath.tempoRate(outgoingBPM: outgoing.bpm, incomingBPM: incoming.bpm)
+                    : nil,
+                strategy: .manual
+            )
+        }
+        return LocalMixMath.automaticPlan(
+            outgoingBPM: outgoing.bpm,
+            incomingBPM: incoming.bpm,
+            requestedSeconds: setting.seconds,
+            remaining: remaining,
+            outroTrim: setting.outroTrim,
+            syncTempo: setting.syncTempo
+        )
+    }
+
     func startTransition() {
         beginTransition(manual: false)
     }
@@ -498,28 +524,18 @@ enum LocalMixAnalysis {
             let next = currentIndex + 1
             let setting = project.transition(at: currentIndex)
             try schedule(next, on: nextDeck, at: setting.incomingCue)
-            pitches[nextDeck].rate = 1
-            if setting.syncTempo,
-               let rate = LocalMixMath.tempoRate(
-                    outgoingBPM: project.tracks[currentIndex].bpm,
-                    incomingBPM: project.tracks[next].bpm
-               ) {
-                pitches[nextDeck].rate = rate
-            }
             let outgoingPosition = played(on: activeDeck)
             let remaining = project.tracks[currentIndex].duration - outgoingPosition
-            fadeDuration = LocalMixMath.transitionDuration(
-                requested: setting.seconds,
-                remaining: remaining,
-                outroTrim: setting.outroTrim
-            )
+            let plan = transitionPlan(at: currentIndex, remaining: remaining)
+            pitches[nextDeck].rate = plan.tempoRate ?? 1
+            fadeDuration = plan.duration
             fadeStartedAt = outgoingPosition
             isTransitioning = true
             isManualFaderActive = manual
             fadeProgress = 0
             decks[nextDeck].volume = 0
             decks[nextDeck].play()
-            diagnostic = manual ? "Manual crossfader ready" : "Transition started"
+            diagnostic = manual ? "Manual crossfader ready" : "\(plan.strategy.rawValue) · \(String(format: "%.1f", plan.duration))s"
         } catch {
             isTransitioning = false
             isManualFaderActive = false
@@ -668,9 +684,13 @@ enum LocalMixAnalysis {
         }
         let setting = project.transition(at: currentIndex)
         if (isPreview || (project.autoPlay && setting.automatic))
-            && currentIndex + 1 < project.tracks.count
-            && left <= setting.seconds + setting.outroTrim {
-            startTransition()
+            && currentIndex + 1 < project.tracks.count {
+            // Trigger at the duration the actual fade will use, not the raw
+            // editor value; otherwise an adaptive 4s blend starts 8s early.
+            let plan = transitionPlan(at: currentIndex, remaining: outgoing.duration)
+            if left <= plan.duration + max(0, setting.outroTrim) {
+                startTransition()
+            }
         }
     }
 
