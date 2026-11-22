@@ -79,8 +79,8 @@ struct EeveeLocalMixStudioView: View {
 
     var body: some View {
         List {
-            Section(header: Text("MIX STUDIO"), footer:
-                Text("Two-deck local DJ mixing. Import audio files you own or are authorized to use. This editor cannot load Spotify streaming tracks or sync to Spotify's Premium cloud Mix service.")) {
+            Section(header: Text("LOCAL MIX STUDIO"), footer:
+                Text("Two-deck mixing for audio files stored on this iPhone. Spotify's protected streaming catalog cannot be used as DJ decks. Pause Spotify playback before starting a local mix.")) {
                 HStack {
                     Image(systemName: "waveform.path").foregroundColor(.green)
                     TextField("Name your mix", text: Binding(
@@ -114,6 +114,16 @@ struct EeveeLocalMixStudioView: View {
                     .font(.caption)
             }
 
+            Section(header: Text("MIX AUTOMATION"),
+                    footer: Text(studio.project.autoPlay
+                        ? "Automatic local transitions are enabled. Each track uses its saved transition settings."
+                        : "Automatic local transitions are off. Tracks play normally until you start a manual blend.")) {
+                Toggle("Automatic local mixing", isOn: Binding(
+                    get: { studio.project.autoPlay },
+                    set: { studio.project.autoPlay = $0; studio.save() }
+                ))
+            }
+
             if studio.project.tracks.count > 0 {
                 Section(header: Text("PLAYBACK")) {
                     HStack(spacing: 18) {
@@ -140,20 +150,25 @@ struct EeveeLocalMixStudioView: View {
                     ProgressView(value: min(1, studio.position / max(1, studio.project.tracks[studio.currentIndex].duration)))
                         .accentColor(.green)
 
-                    Toggle("Auto Mix entire playlist", isOn: Binding(
-                        get: { studio.project.autoPlay },
-                        set: { studio.project.autoPlay = $0; studio.save() }
-                    ))
                     if studio.isPlaying && studio.currentIndex + 1 < studio.project.tracks.count {
                         Button("Mix into next track now") { studio.startTransition() }
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack { Text("LIVE CROSSFADER"); Spacer(); Text("\(Int(studio.fadeProgress * 100))%") }
-                                .font(.caption2).foregroundColor(.secondary)
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text(studio.isManualFaderActive ? "MANUAL CROSSFADER" : "CROSSFADER")
+                                Spacer()
+                                Text("\(Int(studio.fadeProgress * 100))%")
+                                    .monospacedDigit()
+                            }
+                            .font(.caption2).foregroundColor(.secondary)
                             Slider(value: Binding(
                                 get: { studio.fadeProgress },
                                 set: { studio.setManualFader($0) }
                             ), in: 0...1)
                             .accentColor(.green)
+                            if studio.isManualFaderActive {
+                                Button("Cancel blend") { studio.cancelManualTransition() }
+                                    .font(.caption).buttonStyle(.borderless)
+                            }
                         }
                     }
                 }
