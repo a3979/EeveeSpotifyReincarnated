@@ -46,7 +46,7 @@ if ($confirm -cne "UPLOAD") {
     exit 0
 }
 
-$args = @(
+$curlArgs = @(
     "--fail", "--show-error", "--silent",
     "--request", "POST",
     "--header", "Content-Type: application/octet-stream",
@@ -57,7 +57,7 @@ $args = @(
 )
 
 Write-Host "Uploading to Filebin..."
-& curl.exe @args
+& curl.exe @curlArgs
 if ($LASTEXITCODE -ne 0) {
     throw "Filebin upload failed (curl exit code $LASTEXITCODE). The service may be at capacity; try again later or use a private file host with a direct download URL."
 }
