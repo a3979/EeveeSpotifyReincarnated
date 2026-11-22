@@ -1,4 +1,4 @@
-name: Build EeveeSpotify 7.5.0 + Local Mix Studio (Spotify 9.2.2)
+name: Build EeveeSpotify 7.5.0 + Local Beat Mix (Spotify 9.2.2)
 
 on:
   push:
@@ -102,8 +102,11 @@ jobs:
           if otool -L "$DY" | tail -n +2 | grep -Ei '/var/jb|libroot|roothide'; then
             echo "::error::IPA build must not link jailbreak-only libraries"; exit 1
           fi
-          grep -aFq 'LocalMixStudio' "$DY" || { echo "::error::Local Mix Studio code missing from compiled dylib"; exit 1; }
-          grep -aFq 'Manual crossfader ready' "$DY" || { echo "::error::Manual crossfader code missing from compiled dylib"; exit 1; }
+          grep -aFq 'LocalMixStudio' "$DY" || { echo "::error::Optional local-file studio code missing from compiled dylib"; exit 1; }
+          grep -aFq 'Manual crossfader ready' "$DY" || { echo "::error::Optional local-file studio code missing from compiled dylib"; exit 1; }
+          for symbol in SpotifyAudioProbeSetObserver AudioUnitSetProperty EeveeLocalMixInstallAudioProbe; do
+            nm -gU "$DY" | grep -q "$symbol" || { echo "::error::Local Beat Mix audio hook missing: $symbol"; exit 1; }
+          done
           mkdir -p outputs
           cp "$DEB" outputs/com.eevee.spotify-localmix.deb
           echo "EEVEE_DY=$DY" >> "$GITHUB_ENV"
@@ -184,18 +187,23 @@ jobs:
           test -s "$APP/Frameworks/EeveeSpotify.dylib"
           test -s "$APP/Frameworks/Orion.framework/Orion"
           test -s "$APP/Frameworks/EeveeSwiftProtobuf.framework/EeveeSwiftProtobuf"
+          for symbol in SpotifyAudioProbeSetObserver AudioUnitSetProperty EeveeLocalMixInstallAudioProbe; do
+            nm -gU "$APP/Frameworks/EeveeSpotify.dylib" | grep -q "$symbol" || { echo "::error::Packaged Local Beat Mix audio hook missing: $symbol"; exit 1; }
+          done
           otool -L "$APP/Frameworks/EeveeSpotify.dylib"
           if otool -L "$APP/Frameworks/EeveeSpotify.dylib" | tail -n +2 | grep -Ei '/var/jb|libroot|roothide'; then
             echo "::error::Jailbreak-only dependency found in final IPA"; exit 1
           fi
-          echo "IPA ZIP integrity, Spotify version, tweak, Orion and Protobuf verified."
+          echo "IPA ZIP integrity, Spotify version, tweak, Orion, Protobuf and Local Beat Mix PCM hooks verified."
           echo "Physical iPhone playback and Sideloadly signing still require device testing."
           {
-            echo "### Local Mix Studio build"
+            echo "### Local Beat Mix build"
             echo "- Spotify base: 9.2.2"
-            echo "- Mix engine: two local audio decks"
-            echo "- Automatic transitions, manual crossfader, EQ and effects included"
-            echo "- Spotify streaming tracks are not used as DJ decks"
+            echo "- Local Beat Mix: bundled AudioUnit and AVFoundation PCM observation"
+            echo "- On-device BPM estimate adjusts Spotify's native crossfade to a 4/8/16-beat duration"
+            echo "- Uses Spotify's existing playback and crossfade engine; no cloud AutoMix call"
+            echo "- Not yet implemented: independent streaming decks, per-track cue points, tempo/key matching or the Premium Mix editor"
+            echo "- Optional Local File Mix Studio remains a separate imported-audio player"
             echo "- iPhone playback test: not yet performed"
           } >> "$GITHUB_STEP_SUMMARY"
 
