@@ -248,7 +248,6 @@ struct EeveeSpotify: Tweak {
         activateRatingPromptBlock()
 
         activateEeveeCrossfadeForce()
-        LocalMixRuntime.activate()
         activateEeveeAdBlockerExtended()
         activateUpsellPopupBlocker()
         activateUpsellServiceBlocker()
