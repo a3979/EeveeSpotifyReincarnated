@@ -90,15 +90,15 @@ struct EeveeLocalMixStudioView: View {
                     } label: {
                         Label("Add audio", systemImage: "plus")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
+                    .buttonStyle(.plain)
+                    .accentColor(.green)
 
                     Button {
                         importingProject = true
                     } label: {
                         Label("Open mix", systemImage: "folder")
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.plain)
                 }
                 if studio.preparing {
                     HStack { ProgressView(); Text("Analyzing waveforms and tempo...") }
@@ -133,7 +133,7 @@ struct EeveeLocalMixStudioView: View {
                             .monospacedDigit().font(.caption)
                     }
                     ProgressView(value: min(1, studio.position / max(1, studio.project.tracks[studio.currentIndex].duration)))
-                        .tint(.green)
+                        .accentColor(.green)
 
                     Toggle("Auto Mix entire playlist", isOn: Binding(
                         get: { studio.project.autoPlay },
@@ -148,7 +148,7 @@ struct EeveeLocalMixStudioView: View {
                                 get: { studio.fadeProgress },
                                 set: { studio.setManualFader($0) }
                             ), in: 0...1)
-                            .tint(.green)
+                            .accentColor(.green)
                         }
                     }
                 }
@@ -156,7 +156,7 @@ struct EeveeLocalMixStudioView: View {
                     Text("Use Edit to drag tracks into your preferred order, or Smart Reorder to group compatible tempos and keys.")) {
                     HStack {
                         Button("Smart Reorder") { studio.smartReorder() }
-                            .font(.callout).buttonStyle(.bordered)
+                            .font(.callout).buttonStyle(.plain)
                         Spacer()
                         EditButton().font(.callout)
                     }
@@ -177,7 +177,7 @@ struct EeveeLocalMixStudioView: View {
                                 }.buttonStyle(.borderless)
                             }
                             LocalMixWaveform(samples: studio.project.tracks[index].waveform)
-                                .stroke(index % 2 == 0 ? Color.green : Color.cyan,
+                                .stroke(index % 2 == 0 ? Color.green : Color(red: 0.05, green: 0.75, blue: 0.9),
                                         style: StrokeStyle(lineWidth: 1.4, lineCap: .round))
                                 .frame(height: 28)
                             if index + 1 < studio.project.tracks.count {
@@ -203,12 +203,12 @@ struct EeveeLocalMixStudioView: View {
 
                 Section(header: Text("MIX COVER")) {
                     ZStack(alignment: .topLeading) {
-                        LinearGradient(colors: [.black, Color.green.opacity(0.65), .teal], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        LinearGradient(colors: [.black, Color.green.opacity(0.65), Color(red: 0.1, green: 0.65, blue: 0.6)], startPoint: .topLeading, endPoint: .bottomTrailing)
                         VStack(alignment: .leading, spacing: 12) {
                             if studio.project.sticker != "NONE" {
                                 Text(studio.project.sticker)
                                     .font(.caption).bold().padding(7)
-                                    .background(Color.white, in: RoundedRectangle(cornerRadius: 5))
+                                    .background(RoundedRectangle(cornerRadius: 5).fill(Color.white))
                                     .foregroundColor(.black)
                             }
                             Spacer()
@@ -409,9 +409,9 @@ private struct EeveeMixTransitionEditor: View {
             }
             Section(header: Text("QUICK STYLES")) {
                 HStack {
-                    Button("Smooth") { applyPreset("smooth") }.buttonStyle(.bordered)
-                    Button("Club") { applyPreset("club") }.buttonStyle(.bordered)
-                    Button("Radio") { applyPreset("radio") }.buttonStyle(.bordered)
+                    Button("Smooth") { applyPreset("smooth") }.buttonStyle(.plain)
+                    Button("Club") { applyPreset("club") }.buttonStyle(.plain)
+                    Button("Radio") { applyPreset("radio") }.buttonStyle(.plain)
                 }
             }
             Section(header: Text("TIMING")) {
