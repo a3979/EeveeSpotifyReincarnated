@@ -114,12 +114,13 @@ static void attachProbe(void) {
 }
 
 void EeveeLocalMixSetEnabled(bool on) {
-    atomic_store_explicit(&enabled, on, memory_order_release);
+    // Initialize the clock before publishing enabled=true to the audio thread.
     if (!ticksPerSecond) {
         mach_timebase_info_data_t info = {0};
         mach_timebase_info(&info);
         ticksPerSecond = info.numer ? (uint64_t)(1000000000.0 * info.denom / info.numer) : 1000000000ULL;
     }
+    atomic_store_explicit(&enabled, on, memory_order_release);
     if (!on) {
         if (setProbeObserver && atomic_exchange(&registered, false)) setProbeObserver(NULL);
         return;
