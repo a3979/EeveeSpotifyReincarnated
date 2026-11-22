@@ -10,7 +10,6 @@ extension Notification.Name {
     static let mixPlaylistStateChanged = Notification.Name("EeveeMixPlaylistStateChanged")
 }
 
-@MainActor
 enum MixPlaylistRuntime {
     private static let enabledKey = "eeveeMixPlaylistEnabled"
     private static let secondsKey = "eeveeMixPlaylistFadeSeconds"
@@ -54,6 +53,10 @@ enum MixPlaylistRuntime {
     // Getter and setter hooks are installed only if Spotify 9.2.2 exposes the
     // correct ObjC-visible native preference implementation.
     static func observe(_ object: NSObject, milliseconds: Int, enabled: Bool? = nil) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { observe(object, milliseconds: milliseconds, enabled: enabled) }
+            return
+        }
         if preferences !== object {
             preferences = object
             observedMilliseconds = -1
@@ -77,12 +80,20 @@ enum MixPlaylistRuntime {
     }
 
     static func observedSwitch(_ object: NSObject, value: Bool) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { observedSwitch(object, value: value) }
+            return
+        }
         if preferences == nil { preferences = object }
         if !capturedOriginal && !applying { originalEnabled = value }
     }
 
     static func beginNativeSetter() -> Bool { applying }
     static func observedNativeSetter(_ object: NSObject, value: Int) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { observedNativeSetter(object, value: value) }
+            return
+        }
         preferences = object
         if !applying && !enabled {
             originalMilliseconds = value > 60 ? value : max(0, value) * 1000
