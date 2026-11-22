@@ -72,12 +72,65 @@ enum EeveeCrossfade {
     ]
 }
 
-func activateEeveeCrossfadeForce() {
-    RemoteFlags.shared.force(EeveeCrossfade.flags, by: "PlaylistMixCrossfade")
-    MixPlaylistRuntime.activatePreferenceCapture()
-    guard NSClassFromString(PreferencesCrossfadeHook.targetName) != nil else {
-        eeveeLog("[EeveeSpotify][Crossfade] Skipped: \(PreferencesCrossfadeHook.targetName) not found")
-        return
+// Spotify loads some Swift-backed Objective-C classes lazily. A one-shot
+// NSClassFromString check during tweak init can permanently miss the preference
+// implementation, leaving the visible Mix switch disconnected from playback.
+// Retry briefly on the main run loop, then install the hook group only after
+// the class and every selector we hook are present.
+enum EeveeCrossfadeLateInstaller {
+    private static var timer: Timer?
+    private(set) static var attempts = 0
+    private(set) static var activated = false
+
+    static func start() {
+        guard !activated, timer == nil else { return }
+        let begin = {
+            guard !activated, timer == nil else { return }
+            let poll = Timer(timeInterval: 0.25, repeats: true) { current in
+                attempts += 1
+                guard let cls = NSClassFromString(PreferencesCrossfadeHook.targetName) else {
+                    if attempts >= 240 {
+                        current.invalidate()
+                        timer = nil
+                        eeveeLog("[EeveeSpotify][Crossfade] Preference class did not load within 60s")
+                    }
+                    return
+                }
+                let required = [
+                    "audioCrossfadeTime",
+                    "audioCrossfade",
+                    "setAudioCrossfadeTime:",
+                    "setAudioCrossfade:"
+                ].map(NSSelectorFromString)
+                guard required.allSatisfy({ class_getInstanceMethod(cls, $0) != nil }) else {
+                    if attempts >= 240 {
+                        current.invalidate()
+                        timer = nil
+                        eeveeLog("[EeveeSpotify][Crossfade] Preference selectors unavailable after 60s")
+                    }
+                    return
+                }
+                current.invalidate()
+                timer = nil
+                EeveeCrossfadePrefGroup().activate()
+                MixPlaylistRuntime.activatePreferenceCapture()
+                activated = true
+                eeveeLog("[EeveeSpotify][Crossfade] Preference hooks attached after \(attempts) discovery checks")
+            }
+            timer = poll
+            RunLoop.main.add(poll, forMode: .common)
+            poll.fire()
+        }
+        if Thread.isMainThread {
+            begin()
+        } else {
+            DispatchQueue.main.async(execute: begin)
+        }
     }
-    EeveeCrossfadePrefGroup().activate()
+}
+
+func activateEeveeCrossfadeForce() {
+    // Register capability overrides before RemoteFlags.prepare() runs.
+    RemoteFlags.shared.force(EeveeCrossfade.flags, by: "PlaylistMixCrossfade")
+    EeveeCrossfadeLateInstaller.start()
 }
