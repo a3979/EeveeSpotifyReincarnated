@@ -41,7 +41,7 @@ static void capturePCM(const AudioStreamBasicDescription *format, AudioBufferLis
 
     uint64_t now = mach_absolute_time();
     atomic_store_explicit(&lastAudioTick, now, memory_order_relaxed);
-    uint64_t earlier = atomic_load_explicit(&lastGateTick, memory_order_relaxed);
+    uint_fast64_t earlier = atomic_load_explicit(&lastGateTick, memory_order_relaxed);
     uint64_t minTicks = ticksPerSecond / 35; // <=35 analyses/s regardless of buffer rate.
     if (earlier && now - earlier < minTicks) return;
     if (!atomic_compare_exchange_strong_explicit(&lastGateTick, &earlier, now,
