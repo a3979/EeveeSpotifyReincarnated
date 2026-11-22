@@ -5,6 +5,8 @@ NS_ASSUME_NONNULL_BEGIN
 int MixRebuildInstallPreferenceCapture(void);
 id _Nullable MixRebuildObservedPreferenceObject(void);
 unsigned int MixRebuildPreferenceCaptureEvents(void);
+NSInteger MixRebuildReadNativeCrossfadeTimeOrNeg1(id target);
+int MixRebuildReadNativeCrossfadeEnabledOrNeg1(id target);
 int MixRebuildReadNativeCrossfade(id target, NSInteger *_Nonnull milliseconds, BOOL *_Nonnull enabled);
 void MixRebuildSetNativeCrossfadeTime(id target, NSInteger milliseconds);
 void MixRebuildSetNativeCrossfadeEnabled(id target, BOOL enabled);
