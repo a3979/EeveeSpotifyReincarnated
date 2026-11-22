@@ -51,7 +51,7 @@ jobs:
           PBFW=$(find "$RUNNER_TEMP/extracted" -name EeveeSwiftProtobuf.framework -type d | head -1)
           [ -n "$DY" ] && [ -n "$PBFW" ] || { echo "::error::Missing tweak or protobuf"; exit 1; }
           otool -L "$DY"
-          if otool -L "$DY" | grep -Ei '/var/jb|libroot|roothide'; then
+          if otool -L "$DY" | tail -n +2 | grep -Ei '/var/jb|libroot|roothide'; then
             echo "::error::IPA tweak must not link jailbreak-only libraries"; exit 1
           fi
           strings "$DY" | grep -q 'header_mix_button_enabled' || { echo "::error::Experimental Mix flag missing"; exit 1; }
