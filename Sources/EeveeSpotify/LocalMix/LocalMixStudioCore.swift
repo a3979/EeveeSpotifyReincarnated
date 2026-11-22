@@ -261,7 +261,7 @@ enum LocalMixAnalysis {
     }
 
     func importFiles(_ urls: [URL]) {
-        guard !urls.isEmpty else { return }
+        guard !urls.isEmpty, !preparing else { return }
         do {
             try FileManager.default.createDirectory(
                 at: Self.audioFolder,
