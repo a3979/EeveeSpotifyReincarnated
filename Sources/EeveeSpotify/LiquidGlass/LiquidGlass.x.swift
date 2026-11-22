@@ -81,11 +81,19 @@ func activateLiquidGlass() {
                                         PlayerArtworkHook.targetName, PlayerDurationHook.targetName))
     }
 
-    guard options.enabled else { return }
     guard #available(iOS 26.0, *) else {
-        eeveeLog("[EeveeSpotify][Glass] Skipped: needs iOS 26")
+        if options.enabled { eeveeLog("[EeveeSpotify][Glass] Skipped: needs iOS 26") }
         return
     }
+
+    // The playlist Mix action is independent of the full Liquid Glass redesign.
+    // When Glass is off (or its playlist section is hidden), install only the
+    // lightweight playlist action row so Local Beat Mix remains discoverable.
+    if !options.enabled || options.playlist == false {
+        add("local beat mix playlist", activate(LocalMixPlaylistGroup(), LocalMixPlaylistHook.targetName))
+    }
+
+    guard options.enabled else { return }
 
     LiquidGlass.applyDefaults()
     plist = EeveeSetMainInfoValue("UIDesignRequiresCompatibility", false as NSNumber) ? "patched" : "FAILED"
@@ -113,7 +121,11 @@ func activateLiquidGlass() {
         add("home", activate(GlassHomeGroup(), GlassHomeShortcutHook.targetName))
     }
     if options.playlist != false {
-        add("playlist", activate(GlassPlaylistGroup(), GlassPlaylistHook.targetName, PlaylistPlayStateHook.targetName, PlaylistListHook.targetName, PlaylistArtworkHook.targetName, PlaylistHeaderLayoutHook.targetName, PlaylistChipHook.targetName))
+        let playlistActive = activate(GlassPlaylistGroup(), GlassPlaylistHook.targetName, PlaylistPlayStateHook.targetName, PlaylistListHook.targetName, PlaylistArtworkHook.targetName, PlaylistHeaderLayoutHook.targetName, PlaylistChipHook.targetName)
+        add("playlist", playlistActive)
+        if !playlistActive {
+            add("local beat mix playlist fallback", activate(LocalMixPlaylistGroup(), LocalMixPlaylistHook.targetName))
+        }
         add("album", activate(GlassAlbumGroup(), GlassAlbumHook.targetName, GlassAlbumListHook.targetName))
         if activate(GlassArtistGroup(), GlassArtistHook.targetName) {
             EeveePixieInstallArtistFollow()
