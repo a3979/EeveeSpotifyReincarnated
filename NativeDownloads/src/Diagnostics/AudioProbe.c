@@ -12,6 +12,7 @@
 // AudioUnitSetProperty replaces a callback while the previous one is in flight.
 #define SAP_MAX_CONTEXTS 128
 #define SAP_MAX_FORMATS 512
+#define SAP_ENERGY_CAPACITY 1024
 _Static_assert(ATOMIC_LLONG_LOCK_FREE == 2, "Audio counters must be lock-free");
 _Static_assert(ATOMIC_POINTER_LOCK_FREE == 2, "Audio pointers must be lock-free");
 
@@ -29,6 +30,12 @@ typedef struct {
     atomic_uint_fast64_t callbacks, frames, bytes, nonzero, errors, lastTick;
     atomic_uint lastFrames, peak;
 } SAPContext;
+
+static atomic_uint energyWriteIndex;
+static atomic_uint energyValues[SAP_ENERGY_CAPACITY];
+static atomic_uint_fast64_t energyTicks[SAP_ENERGY_CAPACITY];
+static _Atomic(SAPContext *) energyOwner;
+static atomic_uint_fast64_t energyLastSampleTick;
 
 static SAPBackend api;
 static atomic_bool backendReady, exhausted;
@@ -158,6 +165,78 @@ static uint32_t peak(const AudioBufferList *data, const AudioStreamBasicDescript
     return (uint32_t)(fmin(maximum, 1.0) * 1000000.0);
 }
 
+static double rmsLevel(const AudioBufferList *data, const AudioStreamBasicDescription *format, UInt32 frames) {
+    double sumSquares = 0.0;
+    uint64_t sampled = 0;
+    const unsigned bytesPerSample = format->mBitsPerChannel / 8;
+    if (!bytesPerSample) return 0.0;
+    for (UInt32 b = 0; b < data->mNumberBuffers; ++b) {
+        const AudioBuffer *buffer = &data->mBuffers[b];
+        if (!buffer->mData) continue;
+        uint64_t count = availableBytes(buffer, format, frames) / bytesPerSample;
+        uint64_t step = count > 128 ? count / 128 : 1;
+        unsigned taken = 0;
+        for (uint64_t i = 0; i < count && taken < 128; i += step, ++taken) {
+            double value = 0.0;
+            if (format->mFormatFlags & kAudioFormatFlagIsFloat) {
+                float sample; memcpy(&sample, (const char *)buffer->mData + i * 4, 4);
+                value = sample;
+            } else if (format->mBitsPerChannel == 16) {
+                int16_t sample; memcpy(&sample, (const char *)buffer->mData + i * 2, 2);
+                value = (double)sample / 32768.0;
+            } else {
+                int32_t sample; memcpy(&sample, (const char *)buffer->mData + i * 4, 4);
+                value = (double)sample / 2147483648.0;
+            }
+            if (isfinite(value)) {
+                value = fmax(-1.0, fmin(1.0, value));
+                sumSquares += value * value;
+                ++sampled;
+            }
+        }
+    }
+    return sampled ? sqrt(sumSquares / (double)sampled) : 0.0;
+}
+
+// Keep one native PCM producer as the BPM source. Sampling is throttled to
+// approximately 50 Hz and stores only normalized RMS values plus monotonic
+// timestamps; no audio samples are copied or persisted.
+static void recordEnergy(SAPContext *context, double level, uint64_t now) {
+    if (context->external || !isfinite(level) || !timebase.numer || !timebase.denom) return;
+    SAPContext *owner = atomic_load_explicit(&energyOwner, memory_order_acquire);
+    if (owner != context) {
+        bool stale = !owner || atomic_load_explicit(&owner->retired, memory_order_acquire);
+        if (owner && !stale) {
+            uint64_t ownerTick = atomic_load_explicit(&owner->lastTick, memory_order_relaxed);
+            uint64_t staleWindow = (uint64_t)(1000000000.0 * (double)timebase.denom /
+                                              (double)timebase.numer);
+            stale = !ownerTick || now < ownerTick || now - ownerTick > staleWindow;
+        }
+        if (stale) {
+            SAPContext *expected = owner;
+            if (atomic_compare_exchange_strong_explicit(&energyOwner, &expected, context,
+                    memory_order_acq_rel, memory_order_acquire)) {
+                atomic_store_explicit(&energyLastSampleTick, 0, memory_order_relaxed);
+            }
+        }
+    }
+    if (atomic_load_explicit(&energyOwner, memory_order_acquire) != context) return;
+
+    const uint64_t interval = (uint64_t)(20000000.0 * (double)timebase.denom /
+                                         (double)timebase.numer);
+    uint64_t last = atomic_load_explicit(&energyLastSampleTick, memory_order_relaxed);
+    if (last && now >= last && now - last < interval) return;
+    if (!atomic_compare_exchange_strong_explicit(&energyLastSampleTick, &last, now,
+            memory_order_acq_rel, memory_order_relaxed)) return;
+
+    unsigned index = atomic_load_explicit(&energyWriteIndex, memory_order_relaxed);
+    unsigned slot = index % SAP_ENERGY_CAPACITY;
+    double normalized = fmax(0.0, fmin(1.0, level));
+    atomic_store_explicit(&energyValues[slot], (uint32_t)(normalized * 1000000.0), memory_order_relaxed);
+    atomic_store_explicit(&energyTicks[slot], now, memory_order_relaxed);
+    atomic_store_explicit(&energyWriteIndex, index + 1, memory_order_release);
+}
+
 static void processPCM(SAPContext *context, const AudioStreamBasicDescription *format,
                        AudioBufferList *data, UInt32 frames, bool writable) {
     bool diagnostic=SAPDiagnosticsEnabled();
@@ -183,6 +262,7 @@ static void processPCM(SAPContext *context, const AudioStreamBasicDescription *f
         uint32_t level = peak(data, format, frames);
         atomic_store_explicit(&context->peak, level, memory_order_relaxed);
         if (level) atomic_fetch_add_explicit(&context->nonzero, 1, memory_order_relaxed);
+        recordEnergy(context, rmsLevel(data, format, frames), now);
     }
     if (writable && callback) callback(format, data, frames);
 }
@@ -482,4 +562,30 @@ bool SAPCopyActiveNativeCallback(uint64_t *proc, uint64_t *refcon) {
     }
     pthread_mutex_unlock(&setupLock);
     return selected != NULL;
+}
+
+SAP_EXPORT void SpotifyAudioProbeReadEnergyEnvelope(double *values, uint32_t capacity,
+                                                     uint32_t *sampleCount, double *sampleHz) {
+    if (sampleCount) *sampleCount = 0;
+    if (sampleHz) *sampleHz = 0.0;
+    if (!values || !capacity || !sampleCount || !sampleHz || !timebase.numer || !timebase.denom) return;
+    uint32_t end = atomic_load_explicit(&energyWriteIndex, memory_order_acquire);
+    uint32_t available = end < SAP_ENERGY_CAPACITY ? end : SAP_ENERGY_CAPACITY;
+    uint32_t count = available < capacity ? available : capacity;
+    uint32_t start = end - count;
+    uint64_t firstTick = 0, lastTick = 0;
+    for (uint32_t i = 0; i < count; ++i) {
+        uint32_t slot = (start + i) % SAP_ENERGY_CAPACITY;
+        uint32_t level = atomic_load_explicit(&energyValues[slot], memory_order_relaxed);
+        uint64_t tick = atomic_load_explicit(&energyTicks[slot], memory_order_relaxed);
+        values[i] = (double)level / 1000000.0;
+        if (i == 0) firstTick = tick;
+        lastTick = tick;
+    }
+    *sampleCount = count;
+    if (count > 1 && lastTick > firstTick) {
+        double duration = (double)(lastTick - firstTick) * (double)timebase.numer /
+                          (double)timebase.denom / 1000000000.0;
+        if (duration > 0.0) *sampleHz = (double)(count - 1) / duration;
+    }
 }

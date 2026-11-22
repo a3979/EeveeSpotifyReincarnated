@@ -22,6 +22,12 @@ struct MixRebuildTempo: Codable, Equatable, Sendable {
 }
 
 enum MixRebuildCore {
+    /// Spotify's preference setter accepts milliseconds, not seconds.
+    /// Keep this conversion explicit and covered by regression tests.
+    static func crossfadeMilliseconds(seconds: Int) -> Int {
+        max(0, min(12, seconds)) * 1000
+    }
+
     /// Equal-power crossfade between *two playing decks*. Changing one deck's
     /// volume without starting a second deck cannot create an audible mix.
     static func gains(progress: Double) -> (outgoing: Float, incoming: Float) {

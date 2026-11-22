@@ -44,6 +44,8 @@ typedef struct {
 } SAPSnapshot;
 
 SAP_EXPORT void SpotifyAudioProbeReadSnapshot(SAPSnapshot *snapshot);
+SAP_EXPORT void SpotifyAudioProbeReadEnergyEnvelope(double *values, uint32_t capacity,
+                                                     uint32_t *sampleCount, double *sampleHz);
 SAP_EXPORT void SpotifyAudioProbeInitialize(void);
 
 // Producer-side paths (AVFoundation scheduling, not the hardware render thread).

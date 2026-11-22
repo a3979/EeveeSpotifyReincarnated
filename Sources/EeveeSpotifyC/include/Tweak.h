@@ -15,6 +15,9 @@ int MixRebuildInstallPlaybackProbe(void);
 int MixRebuildActiveNativePCMPaths(void);
 int MixRebuildActiveAVFoundationPCMPaths(void);
 NSString *MixRebuildPlaybackMonitorStatus(void);
+void MixRebuildSetDiagnosticsEnabled(BOOL enabled);
+void MixRebuildReadPCMEnvelope(double *values, uint32_t capacity,
+                               uint32_t *sampleCount, double *sampleHz);
 void EeveeSBInvokeSeekDouble(id target, SEL selector, double argument);
 NSString *EeveeJBRootPath(NSString *path);
 BOOL EeveeSetMainInfoValue(NSString *key, id value);

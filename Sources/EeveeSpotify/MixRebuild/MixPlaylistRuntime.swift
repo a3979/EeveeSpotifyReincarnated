@@ -63,6 +63,10 @@ enum MixPlaylistRuntime {
     private static var monitorTimer: Timer?
     private static var peakNativePCMPaths = 0
     private static var peakAVPCMPaths = 0
+    private static var bpmEstimate = MixRebuildTempo.unknown
+    private static var bpmEnvelopeSamples = 0
+    private static var bpmEnvelopeHz = 0.0
+    private static var bpmRefreshTicks = 0
 
     static func activatePlaybackVerification() {
         guard !monitorInstalled else { return }
@@ -75,20 +79,49 @@ enum MixPlaylistRuntime {
         guard monitorTimer == nil else { return }
         DispatchQueue.main.async {
             guard enabled, monitorTimer == nil else { return }
+            MixRebuildSetDiagnosticsEnabled(true)
             let timer = Timer(timeInterval: 0.15, repeats: true) { _ in
                 let native = Int(MixRebuildActiveNativePCMPaths())
                 let av = Int(MixRebuildActiveAVFoundationPCMPaths())
                 peakNativePCMPaths = max(peakNativePCMPaths, native)
                 peakAVPCMPaths = max(peakAVPCMPaths, av)
+                bpmRefreshTicks += 1
+                if bpmRefreshTicks % 5 == 0 { refreshPCMTempo() }
             }
             RunLoop.main.add(timer, forMode: .common)
             monitorTimer = timer
         }
     }
 
+    private static func refreshPCMTempo() {
+        var envelope = [Double](repeating: 0.0, count: 900)
+        var count: UInt32 = 0
+        var sampleHz = 0.0
+        envelope.withUnsafeMutableBufferPointer { buffer in
+            guard let base = buffer.baseAddress else { return }
+            MixRebuildReadPCMEnvelope(base, UInt32(buffer.count), &count, &sampleHz)
+        }
+        bpmEnvelopeSamples = Int(count)
+        bpmEnvelopeHz = sampleHz
+        guard sampleHz.isFinite, (15...200).contains(sampleHz),
+              Int(count) >= Int(sampleHz * 6) else {
+            bpmEstimate = .unknown
+            return
+        }
+        bpmEstimate = MixRebuildCore.estimateTempo(
+            energy: Array(envelope.prefix(Int(count))),
+            envelopeHz: sampleHz
+        )
+    }
+
     private static func stopPlaybackSampling() {
         monitorTimer?.invalidate()
         monitorTimer = nil
+        MixRebuildSetDiagnosticsEnabled(false)
+        bpmRefreshTicks = 0
+        bpmEstimate = .unknown
+        bpmEnvelopeSamples = 0
+        bpmEnvelopeHz = 0.0
     }
 
 
@@ -197,7 +230,7 @@ enum MixPlaylistRuntime {
         guard let preferences else { return }
         // Never replace an unknown original Spotify preference with zero.
         guard enabled || capturedOriginal else { return }
-        let ms = enabled ? seconds * 1000 : originalMilliseconds
+        let ms = enabled ? MixRebuildCore.crossfadeMilliseconds(seconds: seconds) : originalMilliseconds
         let bool = enabled || originalEnabled
         applying = true
         MixRebuildSetNativeCrossfadeTime(preferences, ms)
@@ -239,6 +272,11 @@ enum MixPlaylistRuntime {
             "Native reads: \(nativeReadCount)",
             "Native requested milliseconds: \(requestedMilliseconds)",
             "Native readback milliseconds: \(observedMilliseconds)",
+            "PCM diagnostics active: \(enabled)",
+            "PCM BPM estimate: \(bpmEstimate.confidence >= 0.28 ? "\(Int(bpmEstimate.bpm.rounded())) BPM" : "unavailable")",
+            "PCM BPM confidence: \(String(format: "%.2f", bpmEstimate.confidence))",
+            "PCM envelope: \(bpmEnvelopeSamples) samples at \(String(format: "%.1f", bpmEnvelopeHz)) Hz",
+            "BPM is estimated from observed PCM energy, not Spotify's track metadata.",
             "Playback overlap: NOT PROVEN (native timing does not establish concurrent tracks)",
             "Read-only monitor installation result: \(monitorStatus)",
             "Peak native PCM source paths in same 350ms window: \(peakNativePCMPaths)",

@@ -32,31 +32,54 @@ NSString *EeveeJBRootPath(NSString *path) {
 // signatures have not been verified and could crash Spotify. This captures
 // available Objective-C methods for the native transition player/UI so we can
 // determine whether the bundled Spotify code is usable on a Free account.
+static BOOL MixRebuildIsRelevantPlayerClass(const char *name) {
+    if (!name) return NO;
+    const char *needles[] = {
+        "MixingTransitionPlayer", "MixingEditViewController", "MixButtonElement",
+        "MixingTransitionService", "SPTPlayerFactory", "SPTPlayerServiceImplementation",
+        "SPTPlayerListImplementation", "SPTPlayerQueueImplementation", "SPTPlayerContextProvider",
+        "SPTPlayerPlay", "SPTPlayerMftCanPlayCheckerImplementation",
+        "SPTPlayerPositionStateImplementation", "SPTPlayerSubscriptionImplementation",
+        "SPTEsperantoPlayer"
+    };
+    for (unsigned i = 0; i < sizeof(needles) / sizeof(needles[0]); ++i)
+        if (strstr(name, needles[i])) return YES;
+    return NO;
+}
+
+static NSString *MixRebuildDescribeMethodList(Class cls, BOOL classMethods) {
+    Class owner = classMethods ? object_getClass(cls) : cls;
+    unsigned int count = 0;
+    Method *methods = class_copyMethodList(owner, &count);
+    NSMutableArray<NSString *> *descriptions = [NSMutableArray array];
+    for (unsigned int i = 0; i < count && descriptions.count < 24; ++i) {
+        SEL selector = method_getName(methods[i]);
+        const char *encoding = method_getTypeEncoding(methods[i]);
+        if (selector) {
+            [descriptions addObject:[NSString stringWithFormat:@"%@ [%s]",
+                NSStringFromSelector(selector), encoding ?: "?"]];
+        }
+    }
+    if (methods) free(methods);
+    return [NSString stringWithFormat:@"%u: %@", count, [descriptions componentsJoinedByString:@", "]];
+}
+
 NSString *MixRebuildDescribeNativeMixClasses(void) {
     unsigned int count = 0;
     Class *classes = objc_copyClassList(&count);
     if (!classes) return @"Objective-C class enumeration unavailable";
     NSMutableArray<NSString *> *results = [NSMutableArray array];
-    for (unsigned int i = 0; i < count && results.count < 25; i++) {
+    for (unsigned int i = 0; i < count && results.count < 40; i++) {
         const char *name = class_getName(classes[i]);
-        if (!name || (!strstr(name, "MixingTransitionPlayer") &&
-                      !strstr(name, "MixingEditViewController") &&
-                      !strstr(name, "MixButtonElement") &&
-                      !strstr(name, "MixingTransitionService"))) continue;
-        unsigned int methodCount = 0;
-        Method *methods = class_copyMethodList(classes[i], &methodCount);
-        NSMutableArray<NSString *> *selectors = [NSMutableArray array];
-        for (unsigned int j = 0; j < methodCount && selectors.count < 14; j++) {
-            SEL selector = method_getName(methods[j]);
-            if (selector) [selectors addObject:NSStringFromSelector(selector)];
-        }
-        if (methods) free(methods);
-        [results addObject:[NSString stringWithFormat:@"%s (%u methods): %@",
-                            name, methodCount, [selectors componentsJoinedByString:@", "]]];
+        if (!MixRebuildIsRelevantPlayerClass(name)) continue;
+        NSString *instanceMethods = MixRebuildDescribeMethodList(classes[i], NO);
+        NSString *classMethods = MixRebuildDescribeMethodList(classes[i], YES);
+        [results addObject:[NSString stringWithFormat:@"%s | instance methods %@ | class methods %@",
+                            name, instanceMethods, classMethods]];
     }
     free(classes);
     return results.count ? [results componentsJoinedByString:@"\n"]
-                         : @"No native mixing classes exposed to Objective-C runtime";
+                         : @"No native mixing/player classes exposed to Objective-C runtime";
 }
 
 // On some Spotify Free paths the crossfade getters are never invoked. A
