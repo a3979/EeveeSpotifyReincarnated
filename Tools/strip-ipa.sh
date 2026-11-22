@@ -7,6 +7,19 @@
 set -euo pipefail
 
 IPA="${1:-}"
+
+# Compatibility for the earlier Local Mix Studio output name. The current
+# Local Beat Mix packager writes LocalBeatMix.ipa; resolve the old alias only
+# when the requested path is absent and the matching current output exists.
+if [ ! -f "$IPA" ]; then
+    case "$IPA" in
+        *EeveeSpotify-7.5.0-Spotify-9.2.2-LocalMixStudio.ipa)
+            candidate="${IPA%LocalMixStudio.ipa}LocalBeatMix.ipa"
+            [ ! -f "$candidate" ] || IPA="$candidate"
+            ;;
+    esac
+fi
+
 [ -f "$IPA" ] || { echo "usage: $0 path/to/Eevee.ipa" >&2; exit 1; }
 
 IPA_ABS=$(cd "$(dirname "$IPA")" && pwd)/$(basename "$IPA")
