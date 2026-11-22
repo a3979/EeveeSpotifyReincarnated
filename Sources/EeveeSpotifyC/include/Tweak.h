@@ -2,6 +2,8 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+void MixRebuildSetNativeCrossfadeTime(id target, NSInteger milliseconds);
+void MixRebuildSetNativeCrossfadeEnabled(id target, BOOL enabled);
 void EeveeSBInvokeSeekDouble(id target, SEL selector, double argument);
 NSString *EeveeJBRootPath(NSString *path);
 BOOL EeveeSetMainInfoValue(NSString *key, id value);
