@@ -25,8 +25,8 @@ enum LocalMixRuntime {
 
     static var nativeRequestStatus: String {
         guard preferences != nil else { return "Waiting for Spotify preferences" }
-        let requested = appliedSeconds >= 0 ? "\(appliedSeconds)s" : "Not applied"
-        return "Requested \(requested) · reads \(nativeReads) · writes \(nativeWrites)"
+        let requested = appliedSeconds >= 0 ? String(format: "%.1fs (%dms)", Double(appliedSeconds) / 1000, appliedSeconds) : "Not applied"
+        return "Native \(requested) · reads \(nativeReads) · writes \(nativeWrites)"
     }
     static var savedCrossfadeStatus: String {
         capturedUserValue ? "\(requestedSeconds)s" : "Not yet observed"
@@ -59,7 +59,7 @@ enum LocalMixRuntime {
         } else {
             pendingApply = false
             // Restore the user's actual Spotify crossfade setting, including zero.
-            apply(requestedSeconds)
+            if capturedUserValue { apply(requestedSeconds) }
         }
         NotificationCenter.default.post(name: .eeveeLocalMixStateChanged, object: nil)
     }
@@ -90,14 +90,16 @@ enum LocalMixRuntime {
     // crossfade stays armed; a zero setting uses the local 8-second fallback.
     static func replacement(for value: Int) -> Int {
         if applyingInternally { return value }
-        guard enabled, value > 0 else { return value }
-        return Int(EeveeLocalMixSuggestCrossfadeSeconds(
-            Int32(clamping: value), Int32(clamping: beats)))
+        guard enabled else { return value }
+        let originalMilliseconds = LocalMixCrossfadeMath.normalizeMilliseconds(value)
+        let baseSeconds = originalMilliseconds / 1000
+        return LocalMixCrossfadeMath.requestedMilliseconds(
+            baseSeconds: baseSeconds, bpm: Int(EeveeLocalMixEstimatedBPM()), beats: beats)
     }
 
     // Spotify may never call the setter after launch. Its ObjC-visible
-    // audioCrossfadeTime getter provides a reliable second opportunity to
-    // capture the actual preferences object and arm a local request.
+    // audioCrossfadeTime getter provides a second opportunity to capture
+    // its preferences object and arm an actual millisecond-duration request.
     static func observedGetter(_ target: NSObject, value: Int) {
         let capture = {
             nativeReads += 1
@@ -107,7 +109,7 @@ enum LocalMixRuntime {
                 appliedSeconds = -1
             }
             if !capturedUserValue && !applyingInternally {
-                requestedSeconds = max(0, value)
+                requestedSeconds = LocalMixCrossfadeMath.normalizeMilliseconds(value) / 1000
                 capturedUserValue = true
             }
             guard !applyingInternally, enabled else { return }
@@ -127,7 +129,7 @@ enum LocalMixRuntime {
             appliedSeconds = applied
             nativeWrites += 1
             guard !wasInternal else { return }
-            requestedSeconds = max(0, requested)
+            requestedSeconds = LocalMixCrossfadeMath.normalizeMilliseconds(requested) / 1000
             capturedUserValue = true
             if enabled && (pendingApply || requested == 0) {
                 pendingApply = false
@@ -147,18 +149,20 @@ enum LocalMixRuntime {
             pendingApply = enabled
             return
         }
-        let next: Int
-        if enabled && seconds > 0 {
-            next = Int(EeveeLocalMixSuggestCrossfadeSeconds(
-                Int32(clamping: seconds), Int32(clamping: beats)))
+        let milliseconds: Int
+        if enabled {
+            milliseconds = LocalMixCrossfadeMath.requestedMilliseconds(
+                baseSeconds: seconds, bpm: Int(EeveeLocalMixEstimatedBPM()), beats: beats)
         } else {
-            next = max(0, seconds)
+            milliseconds = max(0, seconds) * 1000
         }
-        guard next != appliedSeconds else { return }
+        guard milliseconds != appliedSeconds else { return }
         applyingInternally = true
-        EeveeLocalMixSetNativeCrossfadeTime(preferences, next)
+        EeveeLocalMixSetNativeCrossfadeTime(preferences, milliseconds)
         applyingInternally = false
-        appliedSeconds = next
+        appliedSeconds = milliseconds
+        eeveeLog("[LocalBeatMix] native crossfade request=%dms, estimated BPM=%d, enabled=%@",
+                 milliseconds, EeveeLocalMixEstimatedBPM(), enabled ? "YES" : "NO")
     }
 
     static func tick() {
