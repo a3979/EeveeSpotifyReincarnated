@@ -244,10 +244,10 @@ struct EeveeSpotify: Tweak {
             LocalPlaylistDownloadGroup().activate()
         }
         HideJam.activate()
+        // Register crossfade capability overrides before RemoteFlags.prepare().
+        activateEeveeCrossfadeForce()
         activateRemoteFlags()
         activateRatingPromptBlock()
-
-        activateEeveeCrossfadeForce()
         activateEeveeAdBlockerExtended()
         activateUpsellPopupBlocker()
         activateUpsellServiceBlocker()
