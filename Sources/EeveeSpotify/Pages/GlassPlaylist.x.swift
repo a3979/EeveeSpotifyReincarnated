@@ -4,6 +4,39 @@ import UIKit
 
 struct GlassPlaylistGroup: HookGroup {}
 
+// Lightweight playlist action-row integration used when the user has not
+// enabled the full Liquid Glass redesign. It reuses Spotify's native controls
+// and adds only the Local Beat Mix action.
+struct LocalMixPlaylistGroup: HookGroup {}
+
+@available(iOS 26.0, *)
+enum LocalMixPlaylistUI {
+    static func install(in root: UIView) {
+        guard let header = root.subviews.lazy.compactMap({
+            $0.eeveeFirst(UIView.self, where: { $0.accessibilityIdentifier == "PL.Header" })
+        }).first else { return }
+
+        let scroll: UIScrollView?
+        if let listClass = NSClassFromString(PlaylistListHook.targetName) {
+            scroll = root.eeveeFirst(UIScrollView.self) { $0.isKind(of: listClass) } as? UIScrollView
+        } else {
+            scroll = nil
+        }
+        _ = GlassPlaylist.actionRow(host: root, controls: header, scroll: scroll)
+    }
+}
+
+class LocalMixPlaylistHook: ClassHook<UIViewController> {
+    typealias Group = LocalMixPlaylistGroup
+    static let targetName = "_TtC35ListUXPlatform_FreeTierPlaylistImpl17FTPViewController"
+
+    func viewDidLayoutSubviews() {
+        orig.viewDidLayoutSubviews()
+        guard #available(iOS 26.0, *), let root = target.viewIfLoaded else { return }
+        LocalMixPlaylistUI.install(in: root)
+    }
+}
+
 @available(iOS 26.0, *)
 enum GlassPlaylist {
     static let meter = PerfMeter("Glass][Playlist")
