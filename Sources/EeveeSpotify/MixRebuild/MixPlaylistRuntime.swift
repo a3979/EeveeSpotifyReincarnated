@@ -286,11 +286,15 @@ enum MixPlaylistRuntime {
             "Native Spotify Mix pill intercepted: \(SpotifyNativeMixBinder.attached)",
             "Native Spotify Mix pill scans: \(SpotifyNativeMixBinder.scans)",
             "Native Spotify Mix pill bindings: \(SpotifyNativeMixBinder.binds)",
+            "Native Spotify Mix tap callbacks: \(SpotifyNativeMixBinder.tapEvents)",
+            "Native Spotify Mix long-press callbacks: \(SpotifyNativeMixBinder.longPressEvents)",
+            "Last native Mix tap persisted state: \(SpotifyNativeMixBinder.lastTapEnabled.map(String.init(describing:)) ?? "not tapped yet")",
+            "Native Mix pill green tint indicates UI switch state only; playback is not verified.",
             "Native player service hook installed: \(MixNativeServiceProbe.hookInstalled)",
             "Native player service discovery attempts: \(MixNativeServiceProbe.discoveryAttempts)",
             "Native player dependency injection callbacks: \(MixNativeServiceProbe.injections)",
             "Native player service observed: \(MixNativeServiceProbe.observed)",
-            "Native player service methods: ObjC exposes dependency injection and init only",
+            "Native transition-player service only exposes dependency injection/init; Spotify's other player-service APIs are listed below.",
             "Native Spotify mix components:"
         ] + found + ["Native ObjC player/UI method signatures:", MixRebuildDescribeNativeMixClasses()]).joined(separator: "\n")
     }

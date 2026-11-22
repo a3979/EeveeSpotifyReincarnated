@@ -203,31 +203,85 @@ private final class MixPlaylistEditorController: UIViewController {
 }
 
 
- // Hijack only the touch surface of Spotify's *existing* Mix pill; no extra
- // floating badge and no navigation to the Premium editor. The background,
- // label, and alignment remain entirely owned by Spotify.
- private final class SpotifyMixTouchInterceptor: UIButton {
-     override init(frame: CGRect) {
-         super.init(frame: frame)
-         backgroundColor = .clear
-         accessibilityIdentifier = "Eevee.Playlist.NativeMixInterceptor"
-         accessibilityLabel = "Mix"
-         accessibilityHint = "Tap to enable local Mix, or hold to edit transitions"
-         addTarget(self, action: #selector(toggle), for: .touchUpInside)
-         addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(edit(_:))))
-     }
+// Intercept touches on Spotify's own Mix pill rather than painting a second
+// playlist button. The previous touchUpInside target could be cancelled by
+// Spotify's SwiftUI/scroll touch routing. Long-press already worked because it
+// used a recognizer. Give taps the same reliable gesture delivery, and reflect
+// *local switch state* visually instead of leaving the native pill unchanged.
+// This is a UI state indicator, NOT a claim that audio mixing is happening.
+private final class SpotifyMixTouchInterceptor: UIButton {
+    private var stateObserver: NSObjectProtocol?
+    private let stateDot = UIView()
 
-     required init?(coder: NSCoder) { nil }
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        accessibilityIdentifier = "Eevee.Playlist.NativeMixInterceptor"
+        accessibilityHint = "Tap to toggle local Mix. Hold to adjust transition settings."
+        isAccessibilityElement = true
 
-     @objc private func toggle() {
-         MixPlaylistRuntime.enable(!MixPlaylistRuntime.enabled)
-     }
+        stateDot.isUserInteractionEnabled = false
+        stateDot.backgroundColor = UIColor(red: 0.12, green: 0.84, blue: 0.39, alpha: 1)
+        stateDot.layer.cornerRadius = 3
+        addSubview(stateDot)
 
-     @objc private func edit(_ gesture: UILongPressGestureRecognizer) {
-         guard gesture.state == .began else { return }
-         MixPlaylistSurface.presentEditor(from: self)
-     }
- }
+        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(edit(_:)))
+        longPress.minimumPressDuration = 0.45
+        longPress.cancelsTouchesInView = true
+        addGestureRecognizer(longPress)
+
+        let tap = UITapGestureRecognizer(target: self, action: #selector(toggle(_:)))
+        tap.numberOfTapsRequired = 1
+        tap.cancelsTouchesInView = true
+        tap.require(toFail: longPress)
+        addGestureRecognizer(tap)
+
+        stateObserver = NotificationCenter.default.addObserver(
+            forName: .mixPlaylistStateChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.refresh()
+        }
+        refresh()
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    deinit {
+        if let stateObserver { NotificationCenter.default.removeObserver(stateObserver) }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.cornerRadius = min(20, bounds.height / 2)
+        stateDot.frame = CGRect(x: max(2, bounds.width - 12), y: 5, width: 6, height: 6)
+    }
+
+    func refresh() {
+        let on = MixPlaylistRuntime.enabled
+        backgroundColor = on
+            ? UIColor(red: 0.12, green: 0.84, blue: 0.39, alpha: 0.16)
+            : .clear
+        layer.borderWidth = on ? 1.5 : 0
+        layer.borderColor = UIColor(red: 0.12, green: 0.84, blue: 0.39, alpha: 1).cgColor
+        stateDot.isHidden = !on
+        accessibilityLabel = on ? "Local Mix enabled" : "Local Mix disabled"
+        accessibilityValue = on ? "On" : "Off"
+    }
+
+    @objc private func toggle(_ gesture: UITapGestureRecognizer) {
+        guard gesture.state == .ended else { return }
+        let requested = !MixPlaylistRuntime.enabled
+        MixPlaylistRuntime.enable(requested)
+        SpotifyNativeMixBinder.noteTap(result: MixPlaylistRuntime.enabled)
+        refresh()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    @objc private func edit(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began else { return }
+        SpotifyNativeMixBinder.noteLongPress()
+        MixPlaylistSurface.presentEditor(from: self)
+    }
+}
 
  enum SpotifyNativeMixBinder {
      private static weak var boundRoot: UIView?
@@ -236,10 +290,24 @@ private final class MixPlaylistEditorController: UIViewController {
      private static var lastScan: CFAbsoluteTime = 0
      private(set) static var scans = 0
      private(set) static var binds = 0
+     private(set) static var tapEvents = 0
+     private(set) static var longPressEvents = 0
+     private(set) static var lastTapEnabled: Bool?
+
+     static func noteTap(result: Bool) {
+         tapEvents += 1
+         lastTapEnabled = result
+         eeveeLog("[MixNative] Spotify pill tapped; local enabled=\(result), taps=\(tapEvents)")
+     }
+
+     static func noteLongPress() {
+         longPressEvents += 1
+     }
 
      static var attached: Bool {
          guard let root = boundRoot, let pill = boundPill, let overlay = interceptor else { return false }
-         return root.window != nil && pill.isDescendant(of: root) && overlay.superview === pill
+         return root.window != nil && pill.window != nil && !pill.isHidden &&
+                pill.alpha > 0.05 && pill.isDescendant(of: root) && overlay.superview === pill
      }
 
      static func install(in root: UIView) {
@@ -247,6 +315,7 @@ private final class MixPlaylistEditorController: UIViewController {
          if attached && boundRoot === root {
              if let overlay = interceptor, let pill = boundPill {
                  overlay.frame = pill.bounds
+                 overlay.refresh()
                  pill.bringSubviewToFront(overlay)
              }
              return
