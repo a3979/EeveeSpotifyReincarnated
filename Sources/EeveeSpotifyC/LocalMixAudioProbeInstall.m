@@ -1,7 +1,12 @@
 #import <AudioToolbox/AudioToolbox.h>
 #include <stdatomic.h>
 #import "AudioProbe.h"
+#import "Diagnostics.h"
 #import "fishhook.h"
+
+// Local Beat Mix does not ship the optional diagnostics UI/trace subsystem.
+// Keep the shared probe's counters disabled while allowing its PCM observer to run.
+bool SAPDiagnosticsEnabled(void) { return false; }
 
 // Install the AudioToolbox callback wrappers into Spotify's already-loaded
 // image and any future images. AudioProbe.c resolves the original system
