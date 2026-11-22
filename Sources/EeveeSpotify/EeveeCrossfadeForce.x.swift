@@ -161,4 +161,5 @@ func activateEeveeCrossfadeForce() {
         return
     }
     EeveeCrossfadePrefGroup().activate()
+    LocalMixRuntime.activate()
 }
