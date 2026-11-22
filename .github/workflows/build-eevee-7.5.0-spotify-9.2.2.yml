@@ -1,83 +1,158 @@
-name: Build EeveeSpotify 7.5.0 (Spotify 9.2.2 / Orion included)
+name: Build EeveeSpotify 7.5.0 + Local Mix Studio (Spotify 9.2.2)
 
 on:
   push:
     paths:
       - '.github/workflows/build-eevee-7.5.0-spotify-9.2.2.yml'
+      - 'Sources/EeveeSpotify/LocalMix/**'
+      - 'Sources/EeveeSpotify/Settings/Views/EeveeSettingsView.swift'
+      - 'Sources/EeveeSpotify/Tweak.x.swift'
+      - 'Scripts/run-tests.sh'
+      - 'Tests/LocalMixMath/**'
+      - 'layout/Library/Application Support/EeveeSpotify.bundle/en.lproj/Localizable.strings'
   workflow_dispatch:
     inputs:
       ipa_url:
-        description: Direct HTTPS download link to a NEW decrypted Spotify 9.2.2 IPA (not a webpage)
-        required: true
+        description: Optional direct HTTPS URL to a decrypted Spotify 9.2.2 IPA. Leave blank to use the pinned 9.2.2 base.
+        required: false
         type: string
 
 permissions:
   contents: read
 
+env:
+  THEOS: ${{ github.workspace }}/theos
+  SWIFTPROTOBUF_VERSION: "1.29.0"
+
 jobs:
-  build-ipa:
+  build-local-mix-ipa:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout project source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          submodules: recursive
+
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
-      - name: Install packaging utilities
+
+      - name: Setup Theos
+        uses: actions/checkout@v4
+        with:
+          repository: theos/theos
+          path: ${{ github.workspace }}/theos
+          submodules: recursive
+
+      - name: Install build tools
         run: |
-          brew install dpkg ldid wget make
+          set -euo pipefail
+          brew install make dpkg ldid wget
+          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
           python3 -m pip install --upgrade --break-system-packages git+https://github.com/asdfzxcvbn/pyzule-rw.git
           command -v cyan
-      - name: Download and check vanilla Spotify 9.2.2
+
+      - name: Run regression tests
+        run: |
+          set -euo pipefail
+          bash Scripts/run-tests.sh
+
+      - name: Build EeveeSwiftProtobuf framework
+        run: |
+          set -euo pipefail
+          chmod +x Tools/SwiftProtobufBuild/build-eeveeswiftprotobuf.sh
+          Tools/SwiftProtobufBuild/build-eeveeswiftprotobuf.sh
+
+      - name: Compile EeveeSpotify from this branch
+        env:
+          REPO_SLUG: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          THEOS_PACKAGE_SCHEME=rootless make package FINALPACKAGE=1 NO_JBROOT=1
+          DEB=$(find packages -name 'com.eevee.spotify_*.deb' -type f | head -1)
+          [ -n "$DEB" ] || { echo "::error::Eevee .deb was not produced"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/deb"
+          dpkg-deb -x "$DEB" "$RUNNER_TEMP/deb"
+          DY=$(find "$RUNNER_TEMP/deb" -name EeveeSpotify.dylib -type f | head -1)
+          PROTO=$(find "$RUNNER_TEMP/deb" -type d -name EeveeSwiftProtobuf.framework | head -1)
+          BUNDLE=$(find "$RUNNER_TEMP/deb" -type d -name EeveeSpotify.bundle | head -1)
+          [ -n "$DY" ] && [ -n "$PROTO" ] || { echo "::error::Tweak dylib or EeveeSwiftProtobuf framework missing"; exit 1; }
+          otool -L "$DY"
+          if otool -L "$DY" | tail -n +2 | grep -Ei '/var/jb|libroot|roothide'; then
+            echo "::error::IPA build must not link jailbreak-only libraries"; exit 1
+          fi
+          grep -aFq 'LocalMixStudio' "$DY" || { echo "::error::Local Mix Studio code missing from compiled dylib"; exit 1; }
+          grep -aFq 'Manual crossfader ready' "$DY" || { echo "::error::Manual crossfader code missing from compiled dylib"; exit 1; }
+          echo "EEVEE_DY=$DY" >> "$GITHUB_ENV"
+          echo "PROTO_FW=$PROTO" >> "$GITHUB_ENV"
+          echo "EEVEE_BUNDLE=$BUNDLE" >> "$GITHUB_ENV"
+
+      - name: Download and validate Spotify 9.2.2 base IPA
         env:
           IPA_URL: ${{ inputs.ipa_url || 'https://pixeldrain.com/api/file/R7umuiNR' }}
         run: |
           set -euo pipefail
-          case "$IPA_URL" in https://*) ;; *) echo "::error::HTTPS direct-download URL required"; exit 1;; esac
-          curl --fail --location --retry 3 --output "$RUNNER_TEMP/spotify.ipa" "$IPA_URL"
+          case "$IPA_URL" in https://*) ;; *) echo "::error::A direct HTTPS IPA URL is required"; exit 1;; esac
+          curl --fail --location --retry 3 "$IPA_URL" -o "$RUNNER_TEMP/spotify.ipa"
           unzip -tq "$RUNNER_TEMP/spotify.ipa" >/dev/null
-          spotify_version=$(unzip -p "$RUNNER_TEMP/spotify.ipa" Payload/Spotify.app/Info.plist | plutil -extract CFBundleShortVersionString raw -)
-          echo "Spotify version: $spotify_version"
-          [ "$spotify_version" = "9.2.2" ] || { echo "::error::Expected clean Spotify 9.2.2, received $spotify_version"; exit 1; }
-      - name: Get release tweak and Orion runtime
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' <(unzip -p "$RUNNER_TEMP/spotify.ipa" Payload/Spotify.app/Info.plist))
+          echo "Spotify version: $VERSION"
+          [ "$VERSION" = "9.2.2" ] || { echo "::error::Expected Spotify 9.2.2, received $VERSION"; exit 1; }
+
+      - name: Fetch Orion runtime
         run: |
           set -euo pipefail
-          curl --fail --location --retry 3 --output "$RUNNER_TEMP/eevee.deb"             "https://github.com/SideloadLabs/EeveeSpotifyReincarnated/releases/download/v7.5.0/com.eevee.spotify_7.5.0_iphoneos-arm64.deb"
-          dpkg-deb -x "$RUNNER_TEMP/eevee.deb" "$RUNNER_TEMP/deb"
-          # The original upstream build did not explicitly inject Orion; this one does.
-          curl --fail --location --retry 3 --output "$RUNNER_TEMP/Orion.zip"             "https://github.com/zbzxbg/es-build-tools/releases/download/v1.0.0/Orion.zip"
+          curl --fail --location --retry 3             'https://github.com/zbzxbg/es-build-tools/releases/download/v1.0.0/Orion.zip'             -o "$RUNNER_TEMP/Orion.zip"
+          mkdir -p "$RUNNER_TEMP/orion"
           unzip -q "$RUNNER_TEMP/Orion.zip" -d "$RUNNER_TEMP/orion"
           rm -rf "$RUNNER_TEMP/orion/__MACOSX"
           ORION=$(find "$RUNNER_TEMP/orion" -type d -name Orion.framework -not -path '*__MACOSX*' | head -1)
-          [ -n "$ORION" ] && [ -s "$ORION/Orion" ] || { echo "::error::Orion.framework runtime missing"; exit 1; }
-          file "$ORION/Orion"
-          echo "ORION=$ORION" >> "$GITHUB_ENV"
-      - name: Inject EeveeSpotify with Orion
+          [ -n "$ORION" ] && [ -s "$ORION/Orion" ] || { echo "::error::Orion.framework binary missing"; exit 1; }
+          echo "ORION_FW=$ORION" >> "$GITHUB_ENV"
+
+      - name: Inject freshly compiled Eevee + required frameworks
         run: |
           set -euo pipefail
-          DYL=$(find "$RUNNER_TEMP/deb" -name EeveeSpotify.dylib | head -1)
-          BUNDLE=$(find "$RUNNER_TEMP/deb" -type d -name EeveeSpotify.bundle | head -1)
-          PROTO=$(find "$RUNNER_TEMP/deb" -type d -name EeveeSwiftProtobuf.framework | head -1)
-          [ -n "$DYL" ] && [ -n "$PROTO" ] || { echo "::error::Eevee tweak or Protobuf framework missing"; exit 1; }
           mkdir -p outputs
-          ADD=("$DYL" "$ORION" "$PROTO")
-          [ -n "$BUNDLE" ] && ADD+=("$BUNDLE")
-          cyan -i "$RUNNER_TEMP/spotify.ipa" -o outputs/EeveeSpotify-7.5.0-Spotify-9.2.2.ipa -f "${ADD[@]}" -c 9 -m 16.1 -du
+          ADD=("$EEVEE_DY" "$ORION_FW" "$PROTO_FW")
+          if [ -n "${EEVEE_BUNDLE:-}" ] && [ -d "$EEVEE_BUNDLE" ]; then ADD+=("$EEVEE_BUNDLE"); fi
+          cyan -i "$RUNNER_TEMP/spotify.ipa"             -o outputs/EeveeSpotify-7.5.0-Spotify-9.2.2-LocalMixStudio.ipa             -f "${ADD[@]}" -c 9 -m 16.1 -du
           chmod +x Tools/strip-ipa.sh
-          Tools/strip-ipa.sh outputs/EeveeSpotify-7.5.0-Spotify-9.2.2.ipa
-      - name: Validate final IPA contents
+          Tools/strip-ipa.sh outputs/EeveeSpotify-7.5.0-Spotify-9.2.2-LocalMixStudio.ipa
+
+      - name: Validate packaged IPA
         run: |
           set -euo pipefail
-          F=outputs/EeveeSpotify-7.5.0-Spotify-9.2.2.ipa
-          unzip -tq "$F" >/dev/null
-          unzip -Z1 "$F" | grep -q '^Payload/Spotify.app/Frameworks/EeveeSpotify.dylib$'
-          unzip -Z1 "$F" | grep -q '^Payload/Spotify.app/Frameworks/Orion.framework/Orion$'
-          unzip -Z1 "$F" | grep -q '^Payload/Spotify.app/Frameworks/EeveeSwiftProtobuf.framework/'
-          size=$(stat -f%z "$F")
-          [ "$size" -gt 10000000 ] || { echo "::error::IPA unexpectedly small"; exit 1; }
-          echo "ZIP integrity and required runtime files verified; on-device signing/install not tested."
+          IPA=outputs/EeveeSpotify-7.5.0-Spotify-9.2.2-LocalMixStudio.ipa
+          unzip -tq "$IPA" >/dev/null
+          mkdir -p "$RUNNER_TEMP/verify"
+          unzip -q "$IPA" -d "$RUNNER_TEMP/verify"
+          APP="$RUNNER_TEMP/verify/Payload/Spotify.app"
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Info.plist")
+          [ "$VERSION" = "9.2.2" ] || { echo "::error::Packaged Spotify version changed"; exit 1; }
+          test -s "$APP/Frameworks/EeveeSpotify.dylib"
+          test -s "$APP/Frameworks/Orion.framework/Orion"
+          test -s "$APP/Frameworks/EeveeSwiftProtobuf.framework/EeveeSwiftProtobuf"
+          otool -L "$APP/Frameworks/EeveeSpotify.dylib"
+          if otool -L "$APP/Frameworks/EeveeSpotify.dylib" | tail -n +2 | grep -Ei '/var/jb|libroot|roothide'; then
+            echo "::error::Jailbreak-only dependency found in final IPA"; exit 1
+          fi
+          echo "IPA ZIP integrity, Spotify version, tweak, Orion and Protobuf verified."
+          echo "Physical iPhone playback and Sideloadly signing still require device testing."
+          {
+            echo "### Local Mix Studio build"
+            echo "- Spotify base: 9.2.2"
+            echo "- Mix engine: two local audio decks"
+            echo "- Automatic transitions, manual crossfader, EQ and effects included"
+            echo "- Spotify streaming tracks are not used as DJ decks"
+            echo "- iPhone playback test: not yet performed"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/upload-artifact@v4
         with:
-          name: EeveeSpotify-7.5.0-Spotify-9.2.2-Sideloadly
-          path: outputs/EeveeSpotify-7.5.0-Spotify-9.2.2.ipa
+          name: EeveeSpotify-7.5.0-Spotify-9.2.2-LocalMixStudio
+          path: outputs/EeveeSpotify-7.5.0-Spotify-9.2.2-LocalMixStudio.ipa
           if-no-files-found: error
           retention-days: 14
