@@ -1,0 +1,58 @@
+name: Repackage prebuilt EeveeSpotify 7.5.0 (no double injection)
+on:
+  push:
+    paths:
+      - .github/workflows/eevee-prebuilt-no-double-inject.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repackage:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the user-provided fresh patched build
+        run: |
+          set -euo pipefail
+          mkdir -p working outputs
+          curl --fail --location --retry 3 --output working/source.ipa \
+            "https://pixeldrain.com/api/file/JYNYNkbX"
+          unzip -tq working/source.ipa > /dev/null
+          unzip -q working/source.ipa -d working/unpacked
+      - name: Verify original patched IPA and repair framework signing
+        run: |
+          set -euo pipefail
+          cd working/unpacked
+          APP=Payload/Spotify.app
+          [ -f "$APP/Info.plist" ] && [ -f "$APP/Spotify" ]
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Info.plist")
+          echo "Spotify version: $VERSION"
+          [ "$VERSION" = "9.2.0" ] || { echo "::error::Expected Spotify 9.2.0"; exit 1; }
+          for F in EeveeSpotify.dylib Orion.framework/Orion EeveeSwiftProtobuf.framework/EeveeSwiftProtobuf; do
+            [ -f "$APP/Frameworks/$F" ] || { echo "::error::Required injected component missing: $F"; exit 1; }
+          done
+          echo "Original injection references:"
+          otool -L "$APP/Spotify" | grep -E 'Eevee|Orion|AudioProbe' || true
+          echo "Original Eevee load count:"
+          otool -l "$APP/Spotify" | grep -c 'name @rpath/EeveeSpotify.dylib ' || true
+          PROTO="$APP/Frameworks/EeveeSwiftProtobuf.framework/EeveeSwiftProtobuf"
+          ARCHES=$(lipo -archs "$PROTO")
+          echo "Protobuf architectures: $ARCHES"
+          if echo " $ARCHES " | grep -q ' arm64e '; then
+            lipo "$PROTO" -thin arm64 -output "$PROTO.thin"
+            mv "$PROTO.thin" "$PROTO"
+          fi
+          codesign -f -s - "$APP/Frameworks/EeveeSwiftProtobuf.framework"
+          echo "Signature updated"
+          cd ../..
+          (cd working/unpacked && zip -qry ../../outputs/EeveeSpotify-7.5.0-Spotify-9.2.0-No-Double-Inject.ipa Payload)
+          unzip -tq outputs/EeveeSpotify-7.5.0-Spotify-9.2.0-No-Double-Inject.ipa > /dev/null
+          ls -lh outputs/*.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EeveeSpotify-7.5.0-No-Double-Injection-IPA
+          path: outputs/*.ipa
+          if-no-files-found: error
+          retention-days: 14
