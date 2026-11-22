@@ -58,6 +58,66 @@ NSString *MixRebuildDescribeNativeMixClasses(void) {
                          : @"No native mixing classes exposed to Objective-C runtime";
 }
 
+// On some Spotify Free paths the crossfade getters are never invoked. A
+// preference object may still be constructed through Swift dependency
+// injection, so observe *only verified* ObjC initializer/injector signatures.
+// Never swizzle an inherited NSObject method or call an unknown ABI.
+static __weak id mixObservedPreference;
+static id (*mixOriginalPreferenceInit)(id, SEL) = NULL;
+static void (*mixOriginalPreferenceInject)(id, SEL, id) = NULL;
+static unsigned mixPreferenceCaptureEvents;
+
+static id mixCapturedPreferenceInit(id receiver, SEL command) {
+    id result = mixOriginalPreferenceInit(receiver, command);
+    if (result) { mixObservedPreference = result; mixPreferenceCaptureEvents++; }
+    return result;
+}
+static void mixCapturedPreferenceInject(id receiver, SEL command, id provider) {
+    mixOriginalPreferenceInject(receiver, command, provider);
+    mixObservedPreference = receiver;
+    mixPreferenceCaptureEvents++;
+}
+
+int MixRebuildInstallPreferenceCapture(void) {
+    Class cls = objc_getClass("_TtC31Preferences_CorePreferencesImpl28SPTPreferencesImplementation");
+    if (!cls) return -1;
+    unsigned int count = 0;
+    Method *methods = class_copyMethodList(cls, &count);
+    int bits = 0;
+    for (unsigned int i = 0; i < count; ++i) {
+        SEL sel = method_getName(methods[i]);
+        const char *enc = method_getTypeEncoding(methods[i]);
+        if (!sel || !enc) continue;
+        NSString *name = NSStringFromSelector(sel);
+        if ([name isEqualToString:@"init"] &&
+            strstr(enc, "@16@0:8") == enc && !mixOriginalPreferenceInit) {
+            mixOriginalPreferenceInit = (id (*)(id, SEL))method_getImplementation(methods[i]);
+            method_setImplementation(methods[i], (IMP)mixCapturedPreferenceInit);
+            bits |= 1;
+        }
+        if ([name isEqualToString:@"_injectDependenciesWithProvider:"] &&
+            strstr(enc, "v24@0:8@16") == enc && !mixOriginalPreferenceInject) {
+            mixOriginalPreferenceInject = (void (*)(id, SEL, id))method_getImplementation(methods[i]);
+            method_setImplementation(methods[i], (IMP)mixCapturedPreferenceInject);
+            bits |= 2;
+        }
+    }
+    free(methods);
+    return bits;
+}
+id MixRebuildObservedPreferenceObject(void) { return mixObservedPreference; }
+unsigned int MixRebuildPreferenceCaptureEvents(void) { return mixPreferenceCaptureEvents; }
+
+int MixRebuildReadNativeCrossfade(id target, NSInteger *milliseconds, BOOL *enabled) {
+    if (!target || !milliseconds || !enabled) return 0;
+    SEL time = NSSelectorFromString(@"audioCrossfadeTime");
+    SEL state = NSSelectorFromString(@"audioCrossfade");
+    if (![target respondsToSelector:time] || ![target respondsToSelector:state]) return 0;
+    *milliseconds = ((NSInteger (*)(id, SEL))objc_msgSend)(target, time);
+    *enabled = ((BOOL (*)(id, SEL))objc_msgSend)(target, state);
+    return 1;
+}
+
 void MixRebuildSetNativeCrossfadeTime(id target, NSInteger milliseconds) {
     SEL sel = NSSelectorFromString(@"setAudioCrossfadeTime:");
     if (!target || ![target respondsToSelector:sel]) return;
