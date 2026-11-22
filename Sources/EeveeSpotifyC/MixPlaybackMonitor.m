@@ -53,8 +53,8 @@ NSString *MixRebuildPlaybackMonitorStatus(void) {
     SAPReadActivePCMSourceCounts(&native, &external);
     return [NSString stringWithFormat:
         @"Hook status: %d | backend: %@ | PCM observed: %@ | "
-         "registered paths: %u | native active: %u | AVFoundation active: %u | "
-         "AudioUnit callback registrations: %u | PCM schedule callbacks: %llu / %llu",
+        @"registered paths: %u | native active: %u | AVFoundation active: %u | "
+         @"AudioUnit callback registrations: %u | PCM schedule callbacks: %llu / %llu",
         atomic_load(&installState),
         snapshot.backendReady ? @"ready" : @"unavailable",
         snapshot.pcmConfirmed ? @"yes" : @"unverified",
