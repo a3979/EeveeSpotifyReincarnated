@@ -60,7 +60,6 @@ struct EeveeSettingsView: View {
             SettingsEntry(key: "lyrics", icon: "quote.bubble.fill", color: .blue) { AnyView(EeveeLyricsSettingsView()) },
             SettingsEntry(key: "sponsorblock", icon: "forward.end.fill", color: .red) { AnyView(SponsorBlockSettingsView()) },
             SettingsEntry(key: "local_mix_studio", icon: "slider.horizontal.3", color: Color(hex: "#35C9C1")) { AnyView(EeveeLocalMixStudioView()) },
-            SettingsEntry(key: "local_beat_mix", icon: "waveform.path", color: .green) { AnyView(EeveeLocalMixSettingsView()) },
         ] + pixieDownloadsEntries),
         SettingsGroup(key: "settings_group_looks", entries: [
             SettingsEntry(key: "appearance", icon: "drop.fill", color: Color(hex: "#30B0C7")) { AnyView(AppearanceSettingsView()) },
