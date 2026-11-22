@@ -229,6 +229,9 @@ struct EeveeSpotify: Tweak {
         // does within a second of launch.
         activateNebulaAttributes()
 
+        // Hook crossfade preference construction before Spotify's playback
+        // dependency container and playlist UI get initialized.
+        activateEeveeCrossfadeForce()
         activateTelemetryBlock()
         activateTheme()
         activateLiquidGlass()
@@ -244,9 +247,6 @@ struct EeveeSpotify: Tweak {
             LocalPlaylistDownloadGroup().activate()
         }
         HideJam.activate()
-        // Crossfade capability overrides must be registered before RemoteFlags.prepare().
-        // Register the native preference hooks early as well, before playback loads.
-        activateEeveeCrossfadeForce()
         activateRemoteFlags()
         activateRatingPromptBlock()
         MixPlaylistRuntime.activatePlaybackVerification()
