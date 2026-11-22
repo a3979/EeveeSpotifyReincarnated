@@ -1,6 +1,7 @@
 import AVFoundation
 import Combine
 import Foundation
+import SwiftUI
 import UniformTypeIdentifiers
 
 // Mix Studio is a local-file DJ engine, NOT an entitlement unlock for Spotify
@@ -117,6 +118,7 @@ enum LocalMixAnalysis {
         for b in 0..<buckets {
             let begin = b * levels.count / buckets
             let end = min(levels.count, max(begin + 1, (b + 1) * levels.count / buckets))
+            if begin >= levels.count { wave.append(0); continue }
             wave.append(Float(min(1, (levels[begin..<end].max() ?? 0) * 3.2)))
         }
 
@@ -254,9 +256,10 @@ enum LocalMixAnalysis {
                     try FileManager.default.copyItem(at: url, to: target)
                     let result = LocalMixAnalysis.analyze(target)
                     guard result.duration > 0 else { continue }
+                    let musicalKey = LocalMixKeyAnalyzer.estimate(target)
                     let title = url.deletingPathExtension().lastPathComponent
                     loaded.append(MixTrack(file: filename, title: title, duration: result.duration,
-                                           bpm: result.bpm, waveform: result.wave))
+                                           bpm: result.bpm, musicalKey: musicalKey, waveform: result.wave))
                 } catch { continue }
             }
             await MainActor.run {
@@ -329,6 +332,7 @@ enum LocalMixAnalysis {
         guard project.tracks.indices.contains(index) else { return }
         let url = trackURL(project.tracks[index])
         let file = try AVAudioFile(forReading: url)
+        guard file.length > 0 else { throw NSError(domain: "LocalMix", code: -1, userInfo: [NSLocalizedDescriptionKey: "Empty audio file"]) }
         let start = min(max(0, seconds), max(0, project.tracks[index].duration - 0.25))
         let startFrame = min(Int64(start * file.processingFormat.sampleRate), file.length - 1)
         let remain = max(1, file.length - startFrame)
