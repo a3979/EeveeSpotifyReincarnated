@@ -20,7 +20,6 @@ EeveeSpotify_FILES += Sources/EeveeSpotifyC/PixieArtistFollow.x
 # Local Beat Mix uses the existing Spotify AudioUnit callback plus AVFoundation
 # scheduling hooks. Its observer is read-only, so no audio buffers are copied.
 EeveeSpotify_FILES += NativeDownloads/src/Diagnostics/AudioProbe.c
-EeveeSpotify_FILES += NativeDownloads/src/Diagnostics/DiagnosticsPreferences.m
 EeveeSpotify_FILES += NativeDownloads/src/Diagnostics/AVAudioHooks.m
 EeveeSpotify_FILES += modules/fishhook/fishhook.c
 EeveeSpotify_SWIFTFLAGS = -ISources/EeveeSpotifyC/include -Osize
