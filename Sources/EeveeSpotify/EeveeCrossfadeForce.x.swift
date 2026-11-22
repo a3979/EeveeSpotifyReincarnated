@@ -74,6 +74,7 @@ enum EeveeCrossfade {
 
 func activateEeveeCrossfadeForce() {
     RemoteFlags.shared.force(EeveeCrossfade.flags, by: "PlaylistMixCrossfade")
+    MixPlaylistRuntime.activatePreferenceCapture()
     guard NSClassFromString(PreferencesCrossfadeHook.targetName) != nil else {
         eeveeLog("[EeveeSpotify][Crossfade] Skipped: \(PreferencesCrossfadeHook.targetName) not found")
         return
