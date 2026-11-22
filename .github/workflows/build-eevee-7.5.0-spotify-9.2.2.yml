@@ -121,9 +121,21 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Explain compile-only push build
+        if: github.event_name == 'push'
+        run: |
+          {
+            echo "### Local Beat Mix source build"
+            echo "- Regression tests: passed"
+            echo "- EeveeSpotify tweak: compiled with millisecond-safe Local Beat Mix duration requests"
+            echo "- Compiled package uploaded as a separate artifact"
+            echo "- IPA packaging uses workflow_dispatch with a user-supplied Spotify 9.2.2 URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Download and validate Spotify 9.2.2 base IPA
+        if: github.event_name == 'workflow_dispatch'
         env:
-          IPA_URL: ${{ github.event.inputs.ipa_url || 'https://litter.catbox.moe/weqgke.ipa' }}
+          IPA_URL: ${{ github.event.inputs.ipa_url }}
         run: |
           set -euo pipefail
           case "$IPA_URL" in https://*) ;; *) echo "::error::A direct HTTPS IPA URL is required"; exit 1;; esac
@@ -151,6 +163,7 @@ jobs:
           [ "$VERSION" = "9.2.2" ] || { echo "::error::Expected Spotify 9.2.2, received $VERSION"; exit 1; }
 
       - name: Fetch Orion runtime
+        if: github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail
           curl --fail --location --retry 3             'https://github.com/zbzxbg/es-build-tools/releases/download/v1.0.0/Orion.zip'             -o "$RUNNER_TEMP/Orion.zip"
@@ -162,6 +175,7 @@ jobs:
           echo "ORION_FW=$ORION" >> "$GITHUB_ENV"
 
       - name: Inject freshly compiled Eevee + required frameworks
+        if: github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail
           mkdir -p outputs
@@ -172,6 +186,7 @@ jobs:
           Tools/strip-ipa.sh outputs/EeveeSpotify-7.5.0-Spotify-9.2.2-LocalBeatMix.ipa
 
       - name: Validate packaged IPA
+        if: github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail
           IPA=outputs/EeveeSpotify-7.5.0-Spotify-9.2.2-LocalBeatMix.ipa
@@ -207,6 +222,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch'
         with:
           name: EeveeSpotify-7.5.0-Spotify-9.2.2-LocalBeatMix-MillisecondFix
           path: outputs/EeveeSpotify-7.5.0-Spotify-9.2.2-LocalBeatMix.ipa
