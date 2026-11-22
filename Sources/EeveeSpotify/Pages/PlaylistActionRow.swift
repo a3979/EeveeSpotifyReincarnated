@@ -113,6 +113,7 @@ final class PlaylistActionRow: UIView {
     }
 
     private let shuffleButton = PlaylistActionRow.circle("shuffle")
+    private let mixButton = MixPlaylistButton(frame: .zero)
     private let shuffleDot: UIView = {
         let dot = UIView(frame: CGRect(x: 0, y: 0, width: 4, height: 4))
         dot.layer.cornerRadius = 2
@@ -176,7 +177,7 @@ final class PlaylistActionRow: UIView {
         artistDownloadButton.accessibilityLabel = "Artist downloads"
         artistDownloadButton.isHidden = true
         actions.addSubview(artistDownloadButton)
-        for (button, name) in [(shuffleButton,"Shuffle"),(addButton,"Add"),(shareButton,"Share"),(followButton,"Follow")] {
+        for (button, name) in [(shuffleButton,"Shuffle"),(mixButton,"Mix"),(addButton,"Add"),(shareButton,"Share"),(followButton,"Follow")] {
             button.accessibilityIdentifier = "Eevee.Playlist." + name
             actions.addSubview(button)
         }
@@ -213,8 +214,8 @@ final class PlaylistActionRow: UIView {
             if native.frame != frame { native.frame = frame }
             x += size.width + gap
         }
-        for button in [shuffleButton, artistDownloadButton, addButton, shareButton, followButton] where !button.isHidden {
-            let width = side
+        for button in [shuffleButton, mixButton, artistDownloadButton, addButton, shareButton, followButton] where !button.isHidden {
+            let width: CGFloat = button === mixButton ? 88 : side
             let frame = CGRect(x: x, y: 0, width: width, height: side)
             if button.frame != frame { button.frame = frame }
             x += width + gap
@@ -338,6 +339,15 @@ final class PlaylistActionRow: UIView {
     }
 
     func sync() {
+        // This is the playlist action strip, not an Eevee settings screen.
+        // A missing URI is common on Free/SwiftUI and must not hide Mix.
+        let uri = sourceRoot.flatMap { pageURI(from: $0) }
+        let nonPlaylist = uri.map { !$0.hasPrefix("spotify:playlist:") } ?? false
+        if mixButton.isHidden != nonPlaylist {
+            mixButton.isHidden = nonPlaylist
+            setNeedsLayout()
+        }
+        mixButton.refresh()
         if addButton.isHidden != (add == nil) {
             addButton.isHidden = add == nil
             setNeedsLayout()
