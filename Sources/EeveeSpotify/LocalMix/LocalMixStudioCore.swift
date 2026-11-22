@@ -624,8 +624,15 @@ enum LocalMixAnalysis {
                 return
             }
             let p = (position - fadeStartedAt) / max(fadeDuration, 0.1)
-            applyTransition(progress: min(1, max(0, p)))
-            if p >= 1 { finishTransition() }
+            if p >= 1 || position >= project.tracks[currentIndex].duration - 0.05 {
+                // The outgoing file can finish a little before the timer's
+                // final tick. Complete the handoff instead of leaving the
+                // incoming deck playing underneath a stalled transition.
+                applyTransition(progress: 1)
+                finishTransition()
+            } else {
+                applyTransition(progress: min(1, max(0, p)))
+            }
             return
         }
         let outgoing = project.tracks[currentIndex]
