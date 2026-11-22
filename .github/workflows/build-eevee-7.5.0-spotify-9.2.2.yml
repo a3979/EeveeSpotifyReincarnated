@@ -61,6 +61,7 @@ jobs:
           Tools/SwiftProtobufBuild/build-eeveeswiftprotobuf.sh
 
       - name: Compile EeveeSpotify from this branch
+        id: compile
         env:
           REPO_SLUG: ${{ github.repository }}
         run: |
@@ -80,9 +81,20 @@ jobs:
           fi
           grep -aFq 'LocalMixStudio' "$DY" || { echo "::error::Local Mix Studio code missing from compiled dylib"; exit 1; }
           grep -aFq 'Manual crossfader ready' "$DY" || { echo "::error::Manual crossfader code missing from compiled dylib"; exit 1; }
+          mkdir -p outputs
+          cp "$DEB" outputs/com.eevee.spotify-localmix.deb
           echo "EEVEE_DY=$DY" >> "$GITHUB_ENV"
           echo "PROTO_FW=$PROTO" >> "$GITHUB_ENV"
           echo "EEVEE_BUNDLE=$BUNDLE" >> "$GITHUB_ENV"
+
+      - name: Upload compiled Eevee package
+        uses: actions/upload-artifact@v4
+        if: steps.compile.outcome == 'success'
+        with:
+          name: EeveeSpotify-LocalMixStudio-compiled-deb
+          path: outputs/com.eevee.spotify-localmix.deb
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Download and validate Spotify 9.2.2 base IPA
         env:
@@ -90,10 +102,27 @@ jobs:
         run: |
           set -euo pipefail
           case "$IPA_URL" in https://*) ;; *) echo "::error::A direct HTTPS IPA URL is required"; exit 1;; esac
-          curl --fail --location --retry 3 "$IPA_URL" -o "$RUNNER_TEMP/spotify.ipa"
+          case "$IPA_URL" in
+            https://filebin.net/*)
+              # Filebin first returns a one-time verification cookie; request again with it
+              # so curl receives the actual IPA rather than the HTML interstitial.
+              COOKIE_JAR="$RUNNER_TEMP/filebin-cookies.txt"
+              curl --fail --silent --show-error -c "$COOKIE_JAR" -o /dev/null "$IPA_URL"
+              curl --fail --location --retry 3 --silent --show-error -b "$COOKIE_JAR" -c "$COOKIE_JAR" "$IPA_URL" -o "$RUNNER_TEMP/spotify.ipa"
+              ;;
+            *)
+              curl --fail --location --retry 3 "$IPA_URL" -o "$RUNNER_TEMP/spotify.ipa"
+              ;;
+          esac
           unzip -tq "$RUNNER_TEMP/spotify.ipa" >/dev/null
-          VERSION=$(unzip -p "$RUNNER_TEMP/spotify.ipa" Payload/Spotify.app/Info.plist | plutil -extract CFBundleShortVersionString raw -)
-          echo "Spotify version: $VERSION"
+          INFO="$RUNNER_TEMP/spotify-info.plist"
+          unzip -p "$RUNNER_TEMP/spotify.ipa" Payload/Spotify.app/Info.plist > "$INFO"
+          BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw - "$INFO")
+          VERSION=$(plutil -extract CFBundleShortVersionString raw - "$INFO")
+          BUILD=$(plutil -extract CFBundleVersion raw - "$INFO")
+          echo "Spotify bundle: $BUNDLE_ID"
+          echo "Spotify version: $VERSION ($BUILD)"
+          [ "$BUNDLE_ID" = "com.spotify.client" ] || { echo "::error::Unexpected bundle identifier: $BUNDLE_ID"; exit 1; }
           [ "$VERSION" = "9.2.2" ] || { echo "::error::Expected Spotify 9.2.2, received $VERSION"; exit 1; }
 
       - name: Fetch Orion runtime
@@ -125,7 +154,9 @@ jobs:
           mkdir -p "$RUNNER_TEMP/verify"
           unzip -q "$IPA" -d "$RUNNER_TEMP/verify"
           APP="$RUNNER_TEMP/verify/Payload/Spotify.app"
-          VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Info.plist")
+          BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw - "$APP/Info.plist")
+          VERSION=$(plutil -extract CFBundleShortVersionString raw - "$APP/Info.plist")
+          [ "$BUNDLE_ID" = "com.spotify.client" ] || { echo "::error::Packaged bundle identifier changed"; exit 1; }
           [ "$VERSION" = "9.2.2" ] || { echo "::error::Packaged Spotify version changed"; exit 1; }
           test -s "$APP/Frameworks/EeveeSpotify.dylib"
           test -s "$APP/Frameworks/Orion.framework/Orion"
