@@ -149,11 +149,13 @@ class PreferencesCrossfadeHook: ClassHook<NSObject> {
 }
 
 enum EeveeCrossfade {
-    static let replacements = [
-        EeveePropertyReplacement(name: "crossfade_enabled", scope: "ios-feature-settings", modification: .forceBool(true)),
-        EeveePropertyReplacement(name: "crossfade_enabled", scope: "core-playback-setup", modification: .forceBool(true)),
-        EeveePropertyReplacement(name: "use_playback_settings_crossfade", scope: "ios-feature-settings", modification: .forceBool(false)),
-        EeveePropertyReplacement(name: "use_playback_settings_crossfade", scope: "playback-settings", modification: .forceBool(false)),
+    // Enable only Spotify's local crossfade capability. This does not enable
+    // AutoMix, server-side transitions or any Premium entitlement.
+    static let flags: [String: Any] = [
+        "ios-feature-settings.crossfade_enabled": true,
+        "core-playback-setup.crossfade_enabled": true,
+        "ios-feature-settings.use_playback_settings_crossfade": false,
+        "playback-settings.use_playback_settings_crossfade": false,
     ]
 }
 
@@ -162,6 +164,7 @@ func activateEeveeCrossfadeForce() {
         eeveeLog("[EeveeSpotify][Crossfade] Skipped: %@ missing", PreferencesCrossfadeHook.targetName)
         return
     }
+    RemoteFlags.shared.force(EeveeCrossfade.flags, by: "LocalBeatMix")
     EeveeCrossfadePrefGroup().activate()
     LocalMixRuntime.activate()
 }
