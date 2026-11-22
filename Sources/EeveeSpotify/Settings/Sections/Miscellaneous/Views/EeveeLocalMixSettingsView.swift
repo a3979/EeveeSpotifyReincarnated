@@ -1,6 +1,7 @@
 import Combine
 import EeveeSpotifyC
 import SwiftUI
+import UIKit
 
 /// Experimental local tempo-aware crossfade. Uses Spotify's existing
 /// crossfade renderer, not the Premium playlist Mix editor.
@@ -51,6 +52,17 @@ struct EeveeLocalMixSettingsView: View {
                         .font(.caption2)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.trailing)
+                }
+                HStack {
+                    Text("Native preference readback")
+                    Spacer()
+                    Text(LocalMixRuntime.nativeReadbackStatus)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.trailing)
+                }
+                Button("Copy local mix diagnostics") {
+                    UIPasteboard.general.string = LocalMixRuntime.diagnosticSnapshot
                 }
                 HStack {
                     Text("Original crossfade")
