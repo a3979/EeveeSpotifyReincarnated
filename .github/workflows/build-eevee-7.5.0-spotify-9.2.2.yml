@@ -122,7 +122,6 @@ jobs:
           retention-days: 14
 
       - name: Download and validate Spotify 9.2.2 base IPA
-        if: github.event_name == 'workflow_dispatch'
         env:
           IPA_URL: ${{ github.event.inputs.ipa_url || 'https://litter.catbox.moe/weqgke.ipa' }}
         run: |
@@ -152,7 +151,6 @@ jobs:
           [ "$VERSION" = "9.2.2" ] || { echo "::error::Expected Spotify 9.2.2, received $VERSION"; exit 1; }
 
       - name: Fetch Orion runtime
-        if: github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail
           curl --fail --location --retry 3             'https://github.com/zbzxbg/es-build-tools/releases/download/v1.0.0/Orion.zip'             -o "$RUNNER_TEMP/Orion.zip"
@@ -164,7 +162,6 @@ jobs:
           echo "ORION_FW=$ORION" >> "$GITHUB_ENV"
 
       - name: Inject freshly compiled Eevee + required frameworks
-        if: github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail
           mkdir -p outputs
@@ -175,7 +172,6 @@ jobs:
           Tools/strip-ipa.sh outputs/EeveeSpotify-7.5.0-Spotify-9.2.2-LocalMixStudio.ipa
 
       - name: Validate packaged IPA
-        if: github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail
           IPA=outputs/EeveeSpotify-7.5.0-Spotify-9.2.2-LocalMixStudio.ipa
