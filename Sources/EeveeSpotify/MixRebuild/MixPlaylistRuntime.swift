@@ -17,6 +17,7 @@ enum MixPlaylistRuntime {
     private static var capturedOriginal = false
     private static var originalMilliseconds = 0
     private static var originalEnabled = false
+    private static var originalEnabledKnown = false
     private static var applying = false
     private static var requestedMilliseconds = -1
     private static var observedMilliseconds = -1
@@ -139,12 +140,16 @@ enum MixPlaylistRuntime {
             observedMilliseconds = -1
             requestedMilliseconds = -1
             capturedOriginal = false
+            originalEnabledKnown = false
         }
         nativeReadCount += 1
         observedMilliseconds = milliseconds > 60 ? milliseconds : max(0, milliseconds) * 1000
         if !capturedOriginal && !applying {
             originalMilliseconds = observedMilliseconds
-            if let enabled { originalEnabled = enabled }
+            if let enabled {
+                originalEnabled = enabled
+                originalEnabledKnown = true
+            }
             capturedOriginal = true
         }
         if self.enabled && requestedMilliseconds < 0 && !applying {
@@ -162,7 +167,10 @@ enum MixPlaylistRuntime {
             return
         }
         if preferences == nil { preferences = object }
-        if !capturedOriginal && !applying { originalEnabled = value }
+        if !applying && !originalEnabledKnown {
+            originalEnabled = value
+            originalEnabledKnown = true
+        }
         // Some Spotify builds only ask whether crossfade is on, never calling
         // the duration getter. Still attach to the correct preference object.
         if enabled && requestedMilliseconds < 0 && !applying {
@@ -190,10 +198,12 @@ enum MixPlaylistRuntime {
         // Never replace an unknown original Spotify preference with zero.
         guard enabled || capturedOriginal else { return }
         let ms = enabled ? seconds * 1000 : originalMilliseconds
-        let bool = enabled || (capturedOriginal && originalEnabled)
+        let bool = enabled || originalEnabled
         applying = true
         MixRebuildSetNativeCrossfadeTime(preferences, ms)
-        MixRebuildSetNativeCrossfadeEnabled(preferences, bool)
+        if enabled || originalEnabledKnown {
+            MixRebuildSetNativeCrossfadeEnabled(preferences, bool)
+        }
         applying = false
         requestedMilliseconds = enabled ? ms : -1
     }
@@ -222,6 +232,8 @@ enum MixPlaylistRuntime {
             "Preference lifecycle hook mask (1=init,2=injection): \(preferenceCaptureMask)",
             "Preference lifecycle observations: \(preferenceLifecycleDetections)",
             "Preference class present: \(NSClassFromString("_TtC31Preferences_CorePreferencesImpl28SPTPreferencesImplementation") != nil)",
+            "Crossfade capability flags registered: \(EeveeCrossfade.flags.keys.allSatisfy { RemoteFlags.shared.forced[$0] != nil })",
+            "Original crossfade toggle known: \(originalEnabledKnown)",
             "Native reads: \(nativeReadCount)",
             "Native requested milliseconds: \(requestedMilliseconds)",
             "Native readback milliseconds: \(observedMilliseconds)",
