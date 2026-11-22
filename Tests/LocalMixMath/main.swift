@@ -44,3 +44,20 @@ expect(LocalMixMath.tempoRate(outgoingBPM: 60, incomingBPM: 120) == nil,
        "reject unusable tempo")
 
 print("[LocalMixMath] PASS: transition curves, duration bounds, and tempo limits")
+
+
+expect(LocalMixCrossfadeMath.normalizeMilliseconds(8) == 8000,
+       "legacy seconds must be normalized to native milliseconds")
+expect(LocalMixCrossfadeMath.normalizeMilliseconds(8000) == 8000,
+       "native millisecond value must not be double-converted")
+expect(LocalMixCrossfadeMath.normalizeMilliseconds(0) == 0,
+       "zero preserves original crossfade off")
+expect(LocalMixCrossfadeMath.requestedMilliseconds(baseSeconds: 8, bpm: 120, beats: 8) == 4000,
+       "8 beats at 120 BPM sends 4000 milliseconds, never 4 milliseconds")
+expect(LocalMixCrossfadeMath.requestedMilliseconds(baseSeconds: 8, bpm: 120, beats: 16) == 8000,
+       "16 beats at 120 BPM sends 8000 milliseconds")
+expect(LocalMixCrossfadeMath.requestedMilliseconds(baseSeconds: 0, bpm: 0, beats: 8) == 8000,
+       "unavailable BPM arms a safe 8-second crossfade")
+expect(LocalMixCrossfadeMath.requestedMilliseconds(baseSeconds: 8, bpm: 75, beats: 16) == 12000,
+       "max beat length capped at 12 seconds")
+print("[LocalMixMath] PASS: native millisecond conversion and beat-timing units")
