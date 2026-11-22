@@ -99,6 +99,22 @@ private final class MixPlaylistEditorController: UIViewController {
     private let slider = UISlider()
     private let secondsLabel = UILabel()
     private let status = UILabel()
+    private var refreshTimer: Timer?
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        refresh()
+        refreshTimer?.invalidate()
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 0.75, repeats: true) { [weak self] _ in
+            self?.refresh()
+        }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
