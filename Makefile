@@ -17,12 +17,16 @@ $(shell printf 'enum GeneratedConfig {\n    static let repoSlug = "%s"\n    stat
 
 EeveeSpotify_FILES = $(shell find Sources/EeveeSpotify -name '*.swift') $(shell find Sources/EeveeSpotifyC -name '*.m' -o -name '*.c' -o -name '*.mm' -o -name '*.cpp')
 EeveeSpotify_FILES += Sources/EeveeSpotifyC/PixieArtistFollow.x
-# Local Beat Mix observes Spotify's scheduled PCM buffers without copying or modifying them.
+# Local Beat Mix uses the existing Spotify AudioUnit callback plus AVFoundation
+# scheduling hooks. Its observer is read-only, so no audio buffers are copied.
+EeveeSpotify_FILES += NativeDownloads/src/Diagnostics/AudioProbe.c
+EeveeSpotify_FILES += NativeDownloads/src/Diagnostics/DiagnosticsPreferences.m
 EeveeSpotify_FILES += NativeDownloads/src/Diagnostics/AVAudioHooks.m
-EeveeSpotify_CFLAGS += -INativeDownloads/src/Public
+EeveeSpotify_FILES += modules/fishhook/fishhook.c
 EeveeSpotify_SWIFTFLAGS = -ISources/EeveeSpotifyC/include -Osize
 EeveeSpotify_EXTRA_FRAMEWORKS = EeveeSwiftProtobuf
-EeveeSpotify_CFLAGS = -fobjc-arc -ISources/EeveeSpotifyC/include -Os
+EeveeSpotify_CFLAGS = -fobjc-arc -ISources/EeveeSpotifyC/include -INativeDownloads/src/Public -Imodules/fishhook -DSAP_READ_ONLY_OBSERVER -Os
+EeveeSpotify_FRAMEWORKS += AudioToolbox AVFoundation CoreMedia
 
 # RootHide's compatibility implementation of libroot resolves jailbreak paths
 # through libroothide at runtime. Rootless builds continue to use libroot.
