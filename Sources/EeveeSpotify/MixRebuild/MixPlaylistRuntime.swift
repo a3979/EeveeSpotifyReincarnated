@@ -21,6 +21,42 @@ enum MixPlaylistRuntime {
     private static var requestedMilliseconds = -1
     private static var observedMilliseconds = -1
     private static var nativeReadCount = 0
+    private static var preferenceCaptureMask = -100
+    private static var preferencePollTimer: Timer?
+    private static var preferenceLifecycleDetections = 0
+
+    // Spotify Free may never call the public-shaped crossfade getters. Observe
+    // only verified Objective-C init/injection methods of the *exact* class,
+    // then query a live object with typed scalar selectors. No arbitrary
+    // memory scanning, fake Premium permission response or audio modification.
+    static func activatePreferenceCapture() {
+        guard preferenceCaptureMask == -100 else { return }
+        preferenceCaptureMask = Int(MixRebuildInstallPreferenceCapture())
+        DispatchQueue.main.async {
+            guard preferencePollTimer == nil else { return }
+            let timer = Timer(timeInterval: 0.75, repeats: true) { _ in
+                discoverPreferencesObject()
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            preferencePollTimer = timer
+            discoverPreferencesObject()
+        }
+    }
+
+    private static func discoverPreferencesObject() {
+        guard Thread.isMainThread else { return }
+        preferenceLifecycleDetections = Int(MixRebuildPreferenceCaptureEvents())
+        guard preferences == nil,
+              let object = MixRebuildObservedPreferenceObject() as? NSObject else { return }
+        let raw = Int(MixRebuildReadNativeCrossfadeTimeOrNeg1(object))
+        let switchValue = Int(MixRebuildReadNativeCrossfadeEnabledOrNeg1(object))
+        if raw >= 0 {
+            observe(object, milliseconds: raw, enabled: switchValue < 0 ? nil : switchValue != 0)
+        } else {
+            preferences = object
+            if enabled { apply() }
+        }
+    }
     private static var monitorInstalled = false
     private static var monitorStatus = -100
     private static var monitorTimer: Timer?
@@ -73,6 +109,7 @@ enum MixPlaylistRuntime {
 
     static func enable(_ on: Bool) {
         UserDefaults.standard.set(on, forKey: enabledKey)
+        if on { discoverPreferencesObject() }
         if on {
             peakNativePCMPaths = 0
             peakAVPCMPaths = 0
@@ -182,6 +219,9 @@ enum MixPlaylistRuntime {
             "Mix enabled: \(enabled)",
             "Requested crossfade: \(seconds)s",
             "Spotify preferences available: \(preferences != nil)",
+            "Preference lifecycle hook mask (1=init,2=injection): \(preferenceCaptureMask)",
+            "Preference lifecycle observations: \(preferenceLifecycleDetections)",
+            "Preference class present: \(NSClassFromString("_TtC31Preferences_CorePreferencesImpl28SPTPreferencesImplementation") != nil)",
             "Native reads: \(nativeReadCount)",
             "Native requested milliseconds: \(requestedMilliseconds)",
             "Native readback milliseconds: \(observedMilliseconds)",
