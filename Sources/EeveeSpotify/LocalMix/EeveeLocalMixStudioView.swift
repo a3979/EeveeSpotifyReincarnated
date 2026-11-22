@@ -135,7 +135,7 @@ struct EeveeLocalMixStudioView: View {
                             .font(.caption)
                         Spacer()
                         Text(time(studio.position))
-                            .monospacedDigit().font(.caption)
+                            .font(.system(size: 12, weight: .regular, design: .monospaced))
                     }
                     ProgressView(value: min(1, studio.position / max(1, studio.project.tracks[studio.currentIndex].duration)))
                         .accentColor(.green)
@@ -405,7 +405,7 @@ private struct EeveeMixTransitionEditor: View {
                                          duration: studio.project.tracks[index].duration)
                     LocalMixWaveformView(title: "IN · " + studio.project.tracks[index + 1].title,
                                          data: studio.project.tracks[index + 1].waveform,
-                                         tint: .cyan,
+                                         tint: Color(red: 0.05, green: 0.75, blue: 0.90),
                                          bpm: studio.project.tracks[index + 1].bpm,
                                          duration: studio.project.tracks[index + 1].duration)
                     Button("Preview these two songs") {
