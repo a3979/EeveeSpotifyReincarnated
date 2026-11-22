@@ -201,6 +201,40 @@ struct EeveeLocalMixStudioView: View {
                     .onDelete(perform: studio.removeTracks)
                 }
 
+                Section(header: Text("MIX COVER")) {
+                    ZStack(alignment: .topLeading) {
+                        LinearGradient(colors: [.black, Color.green.opacity(0.65), .teal], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        VStack(alignment: .leading, spacing: 12) {
+                            if studio.project.sticker != "NONE" {
+                                Text(studio.project.sticker)
+                                    .font(.caption).bold().padding(7)
+                                    .background(Color.white, in: RoundedRectangle(cornerRadius: 5))
+                                    .foregroundColor(.black)
+                            }
+                            Spacer()
+                            Text(studio.project.title.uppercased())
+                                .font(.title).bold().foregroundColor(.white)
+                                .lineLimit(3)
+                        }
+                        .padding(20)
+                    }
+                    .frame(height: 160)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    Picker("Mixed Edition sticker", selection: Binding(
+                        get: { studio.project.sticker },
+                        set: { studio.project.sticker = $0; studio.save() }
+                    )) {
+                        ForEach(LocalMixCoverArtwork.stickers, id: \.self) { value in
+                            Text(value).tag(value)
+                        }
+                    }
+                    Button("Export custom cover PNG") {
+                        shareURL = LocalMixCoverArtwork.export(title: studio.project.title,
+                                                               sticker: studio.project.sticker)
+                        sharing = shareURL != nil
+                    }
+                }
+
                 Section(header: Text("SAVE & SHARE"),
                         footer: Text("Share a portable mix project file containing your transition settings and track order. Audio files are not embedded, and Spotify cloud collaboration is not supported.")) {
                     Button("Save mix project") {
@@ -211,9 +245,19 @@ struct EeveeLocalMixStudioView: View {
                         sharing = shareURL != nil
                     }
                     Button("Start a new mix") {
-                        studio.stop()
-                        studio.project = MixStudioProject()
-                        studio.save()
+                        studio.newProject()
+                    }
+                }
+                if !studio.savedProjects.isEmpty {
+                    Section(header: Text("SAVED MIXES")) {
+                        ForEach(studio.savedProjects, id: \.self) { url in
+                            HStack {
+                                Text(savedName(url)).font(.callout).lineLimit(1)
+                                Spacer()
+                                Button("Open") { studio.loadProject(url) }
+                                    .buttonStyle(.borderless)
+                            }
+                        }
                     }
                 }
             }
@@ -251,6 +295,14 @@ struct EeveeLocalMixStudioView: View {
                 LocalMixShareSheet(items: [shareURL])
             }
         }
+    }
+
+    private func savedName(_ url: URL) -> String {
+        guard let data = try? Data(contentsOf: url),
+              let project = try? JSONDecoder().decode(MixStudioProject.self, from: data) else {
+            return url.deletingPathExtension().lastPathComponent
+        }
+        return project.title
     }
 
     private func feature(_ name: String, supported: Bool) -> some View {
@@ -355,6 +407,13 @@ private struct EeveeMixTransitionEditor: View {
                     }
                 }
             }
+            Section(header: Text("QUICK STYLES")) {
+                HStack {
+                    Button("Smooth") { applyPreset("smooth") }.buttonStyle(.bordered)
+                    Button("Club") { applyPreset("club") }.buttonStyle(.bordered)
+                    Button("Radio") { applyPreset("radio") }.buttonStyle(.bordered)
+                }
+            }
             Section(header: Text("TIMING")) {
                 HStack {
                     Text("Transition length")
@@ -411,6 +470,27 @@ private struct EeveeMixTransitionEditor: View {
         }
         .navigationBarTitle("Mix transition", displayMode: .inline)
         .onDisappear { persist() }
+    }
+
+    private func applyPreset(_ preset: String) {
+        switch preset {
+        case "club":
+            transition.seconds = 12
+            transition.curve = .equalPower
+            transition.effect = .bassSwap
+            transition.syncTempo = true
+        case "radio":
+            transition.seconds = 3
+            transition.curve = .linear
+            transition.effect = .none
+            transition.syncTempo = false
+        default:
+            transition.seconds = 8
+            transition.curve = .smooth
+            transition.effect = .none
+            transition.syncTempo = true
+        }
+        persist()
     }
 
     private func gainControl(_ title: String, value: Binding<Float>) -> some View {
