@@ -122,6 +122,11 @@ void EeveeLocalMixSetEnabled(bool on) {
         mach_timebase_info(&info);
         ticksPerSecond = info.numer ? (uint64_t)(1000000000.0 * info.denom / info.numer) : 1000000000ULL;
     }
+    if (on) {
+        SpotifyAudioProbeInitialize();
+        SAPInstallSideloadAudioImports();
+        SAPInstallAVHooks();
+    }
     atomic_store_explicit(&enabled, on, memory_order_release);
     if (!on) {
         if (setProbeObserver && atomic_exchange(&registered, false)) setProbeObserver(NULL);
