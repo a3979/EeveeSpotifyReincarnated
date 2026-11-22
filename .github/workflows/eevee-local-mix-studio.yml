@@ -1,4 +1,5 @@
 name: Build Mix Studio two-deck iPhone IPA
+# Final code revision: both low- and high-pass audio effects; iOS-compatible SwiftUI.
 on:
   push:
     paths: ['.github/workflows/eevee-local-mix-studio.yml']
