@@ -22,11 +22,40 @@ enum LocalMixRuntime {
     private static var nativeReads = 0
     private static var nativeWrites = 0
     private static var lastReadSeconds = -1
+    private static var postRequestReadback: Int?
 
     static var nativeRequestStatus: String {
         guard preferences != nil else { return "Waiting for Spotify preferences" }
-        let requested = appliedSeconds >= 0 ? String(format: "%.1fs (%dms)", Double(appliedSeconds) / 1000, appliedSeconds) : "Not applied"
-        return "Native \(requested) · reads \(nativeReads) · writes \(nativeWrites)"
+        let requested = appliedSeconds >= 0 ? String(format: "%.1fs (%dms)", Double(appliedSeconds) / 1000, appliedSeconds) : "Not requested"
+        return "Requested \(requested) · reads \(nativeReads) · setter calls \(nativeWrites)"
+    }
+    static var nativeReadbackStatus: String {
+        guard appliedSeconds >= 0 else { return "No duration requested" }
+        guard let observed = postRequestReadback else { return "No Spotify read since request" }
+        return observed == appliedSeconds
+            ? "Preference matches request (audio unverified)"
+            : "Preference differs: \(observed)ms"
+    }
+    static var diagnosticSnapshot: String {
+        // No song titles, account identifiers or raw PCM are included.
+        let probe = EeveeLocalMixProbeState()
+        let status = probe == 2 ? "Receiving PCM" : probe == 1 ? "Waiting for PCM" : "Unavailable"
+        return [
+            "EeveeSpotify Local Beat Mix · diagnostic v2",
+            "iOS: \(ProcessInfo.processInfo.operatingSystemVersionString)",
+            "Enabled: \(enabled)",
+            "Transition beats: \(beats)",
+            "Probe: \(status)",
+            "Estimated tempo: \(EeveeLocalMixEstimatedBPM()) BPM",
+            "Spotify preference object seen: \(preferences != nil)",
+            "Native duration requested (ms): \(appliedSeconds)",
+            "Native preference readback: \(nativeReadbackStatus)",
+            "Native getter calls: \(nativeReads)",
+            "Native setter calls: \(nativeWrites)",
+            "Last native getter value (raw): \(lastReadSeconds)",
+            "Saved original crossfade: \(savedCrossfadeStatus)",
+            "Important: native settings and PCM sampling do not prove two tracks overlap."
+        ].joined(separator: "\\n")
     }
     static var savedCrossfadeStatus: String {
         capturedUserValue ? "\(requestedSeconds)s" : "Not yet observed"
@@ -107,6 +136,10 @@ enum LocalMixRuntime {
             if preferences !== target {
                 preferences = target
                 appliedSeconds = -1
+                postRequestReadback = nil
+            }
+            if appliedSeconds >= 0 && !applyingInternally {
+                postRequestReadback = LocalMixCrossfadeMath.normalizeMilliseconds(value)
             }
             if !capturedUserValue && !applyingInternally && nativeWrites == 0 {
                 requestedSeconds = LocalMixCrossfadeMath.normalizeMilliseconds(value) / 1000
@@ -175,6 +208,7 @@ enum LocalMixRuntime {
             milliseconds = max(0, seconds) * 1000
         }
         guard milliseconds != appliedSeconds else { return }
+        postRequestReadback = nil
         applyingInternally = true
         EeveeLocalMixSetNativeCrossfadeTime(preferences, milliseconds)
         applyingInternally = false
