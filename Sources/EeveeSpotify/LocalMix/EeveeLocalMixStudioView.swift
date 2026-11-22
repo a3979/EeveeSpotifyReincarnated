@@ -97,6 +97,7 @@ struct EeveeLocalMixStudioView: View {
                     }
                     .buttonStyle(.plain)
                     .accentColor(.green)
+                    .disabled(studio.preparing)
 
                     Button {
                         importingProject = true
