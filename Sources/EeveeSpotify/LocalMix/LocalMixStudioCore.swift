@@ -642,13 +642,20 @@ enum LocalMixAnalysis {
 
     func save() {
         project.updated = Date()
-        guard let data = try? JSONEncoder().encode(project) else { return }
-        try? data.write(to: Self.projectFile, options: .atomic)
-        try? FileManager.default.createDirectory(at: Self.projectFolder, withIntermediateDirectories: true)
-        let archive = Self.projectFolder.appendingPathComponent(project.id.uuidString + ".json")
-        try? data.write(to: archive, options: .atomic)
-        reloadSavedProjects()
-        lastSaved = Date()
+        do {
+            let data = try JSONEncoder().encode(project)
+            try data.write(to: Self.projectFile, options: .atomic)
+            try FileManager.default.createDirectory(
+                at: Self.projectFolder,
+                withIntermediateDirectories: true
+            )
+            let archive = Self.projectFolder.appendingPathComponent(project.id.uuidString + ".json")
+            try data.write(to: archive, options: .atomic)
+            reloadSavedProjects()
+            lastSaved = Date()
+        } catch {
+            diagnostic = "Could not save local mix: \(error.localizedDescription)"
+        }
     }
 
     func reloadSavedProjects() {
