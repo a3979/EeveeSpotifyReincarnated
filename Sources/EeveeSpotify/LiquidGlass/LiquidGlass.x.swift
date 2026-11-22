@@ -82,6 +82,8 @@ func activateLiquidGlass() {
     }
 
     guard #available(iOS 26.0, *) else {
+        // The independent Local Beat Mix button also works on older iPhones.
+        add("local beat mix playlist", activate(LocalMixPlaylistGroup(), LocalMixPlaylistHook.targetName))
         if options.enabled { eeveeLog("[EeveeSpotify][Glass] Skipped: needs iOS 26") }
         return
     }

@@ -207,11 +207,8 @@ final class PlaylistActionRow: UIView {
             guard let self else { return }
             let enabling = !LocalMixRuntime.enabled
             LocalMixRuntime.setEnabled(enabling)
-            if enabling {
-                let playing = (self.play?.accessibilityLabel ?? self.play?.eeveeFirst(UIControl.self)?.accessibilityLabel)?
-                    .lowercased().contains("pause") == true
-                if !playing { self.forward(self.play, "mix") }
-            }
+            // Toggling Mix must not invoke Spotify's native Premium controls
+            // or start playback unexpectedly.
             self.sync()
         }, for: .primaryActionTriggered)
         updateMixMenu()

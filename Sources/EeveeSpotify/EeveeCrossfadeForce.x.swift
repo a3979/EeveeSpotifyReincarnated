@@ -2,8 +2,8 @@ import Foundation
 import Orion
 import EeveeSpotifyC
 
-// Optional client-only transition prototype. A muted/fallback build must
-// continue to use Spotify's normal audio processing.
+// Client-only transition probe. Spotify's current Free service may still
+// disable audible crossfade even when preferences and analysis are functional.
 extension Notification.Name {
     static let eeveeLocalMixStateChanged = Notification.Name("EeveeLocalMixStateChanged")
 }
@@ -18,6 +18,19 @@ enum LocalMixRuntime {
     private static var appliedSeconds = -1
     private static var applyingInternally = false
     private static var pendingApply = false
+    private static var capturedUserValue = false
+    private static var nativeReads = 0
+    private static var nativeWrites = 0
+    private static var lastReadSeconds = -1
+
+    static var nativeRequestStatus: String {
+        guard preferences != nil else { return "Waiting for Spotify preferences" }
+        let requested = appliedSeconds >= 0 ? "\(appliedSeconds)s" : "Not applied"
+        return "Requested \(requested) · reads \(nativeReads) · writes \(nativeWrites)"
+    }
+    static var savedCrossfadeStatus: String {
+        capturedUserValue ? "\(requestedSeconds)s" : "Not yet observed"
+    }
     private static var ticker: Timer?
     private static let defaultCrossfadeSeconds = 8
     private static let enabledKey = "eeveeLocalBeatMixEnabled"
@@ -82,13 +95,40 @@ enum LocalMixRuntime {
             Int32(clamping: value), Int32(clamping: beats)))
     }
 
+    // Spotify may never call the setter after launch. Its ObjC-visible
+    // audioCrossfadeTime getter provides a reliable second opportunity to
+    // capture the actual preferences object and arm a local request.
+    static func observedGetter(_ target: NSObject, value: Int) {
+        let capture = {
+            nativeReads += 1
+            lastReadSeconds = value
+            if preferences !== target {
+                preferences = target
+                appliedSeconds = -1
+            }
+            if !capturedUserValue && !applyingInternally {
+                requestedSeconds = max(0, value)
+                capturedUserValue = true
+            }
+            guard !applyingInternally, enabled else { return }
+            if pendingApply {
+                pendingApply = false
+                apply(activeBaseSeconds)
+            }
+        }
+        if Thread.isMainThread { capture() }
+        else { DispatchQueue.main.async(execute: capture) }
+    }
+
     static func remember(_ target: NSObject, requested: Int, applied: Int) {
         let wasInternal = applyingInternally
         let work = {
             preferences = target
             appliedSeconds = applied
+            nativeWrites += 1
             guard !wasInternal else { return }
-            requestedSeconds = requested
+            requestedSeconds = max(0, requested)
+            capturedUserValue = true
             if enabled && (pendingApply || requested == 0) {
                 pendingApply = false
                 apply(activeBaseSeconds)
@@ -134,6 +174,17 @@ class PreferencesCrossfadeHook: ClassHook<NSObject> {
     typealias Group = EeveeCrossfadePrefGroup
     static let targetName = "_TtC31Preferences_CorePreferencesImpl28SPTPreferencesImplementation"
 
+    func audioCrossfadeTime() -> Int {
+        let value = orig.audioCrossfadeTime()
+        LocalMixRuntime.observedGetter(target, value: value)
+        return value
+    }
+
+    func audioCrossfade() -> Bool {
+        let value = orig.audioCrossfade()
+        return value || LocalMixRuntime.enabled
+    }
+
     func setAudioCrossfadeTime(_ value: Int) {
         let adjusted = LocalMixRuntime.replacement(for: value)
         orig.setAudioCrossfadeTime(adjusted)
@@ -169,11 +220,11 @@ enum EeveeCrossfade {
 }
 
 func activateEeveeCrossfadeForce() {
+    RemoteFlags.shared.force(EeveeCrossfade.flags, by: "LocalBeatMix")
+    LocalMixRuntime.activate()
     guard NSClassFromString(PreferencesCrossfadeHook.targetName) != nil else {
-        eeveeLog("[EeveeSpotify][Crossfade] Skipped: %@ missing", PreferencesCrossfadeHook.targetName)
+        eeveeLog("[EeveeSpotify][Crossfade] Preferences hook target absent: %@", PreferencesCrossfadeHook.targetName)
         return
     }
-    RemoteFlags.shared.force(EeveeCrossfade.flags, by: "LocalBeatMix")
     EeveeCrossfadePrefGroup().activate()
-    LocalMixRuntime.activate()
 }

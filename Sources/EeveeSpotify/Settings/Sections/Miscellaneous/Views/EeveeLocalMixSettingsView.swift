@@ -30,7 +30,8 @@ struct EeveeLocalMixSettingsView: View {
                 .disabled(!enabled)
             }
 
-            Section(header: Text("Live analysis")) {
+            Section(header: Text("Live analysis"),
+                    footer: Text("A BPM reading confirms PCM sampling, not successful crossfading. Spotify Free may refuse native overlapping playback despite a crossfade request.")) {
                 HStack {
                     Text("Audio probe")
                     Spacer()
@@ -43,6 +44,20 @@ struct EeveeLocalMixSettingsView: View {
                     Text(bpm > 0 ? "\(bpm) BPM" : "Learning...")
                         .foregroundColor(.secondary)
                 }
+                HStack {
+                    Text("Native crossfade request")
+                    Spacer()
+                    Text(LocalMixRuntime.nativeRequestStatus)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.trailing)
+                }
+                HStack {
+                    Text("Original crossfade")
+                    Spacer()
+                    Text(LocalMixRuntime.savedCrossfadeStatus)
+                        .foregroundColor(.secondary)
+                }
                 Button("Apply updated transition timing") {
                     LocalMixRuntime.tick()
                     refresh()
@@ -51,7 +66,7 @@ struct EeveeLocalMixSettingsView: View {
             }
 
             Section(
-                footer: Text("Local Beat Mix arms Spotify's normal crossfade when enabled. Start a playlist and let the analyzer listen for a stable tempo. It then adjusts the crossfade duration toward the selected 4/8/16-beat window. If no reliable tempo is detected, your saved crossfade duration is retained.")
+                footer: Text("Local Beat Mix requests Spotify's native crossfade when enabled. Start a playlist and let the analyzer listen for a stable tempo. It then adjusts the crossfade duration toward the selected 4/8/16-beat window. If no reliable tempo is detected, your saved crossfade duration is retained.")
             ) {
                 Text("Spotify's own playback engine performs the overlap. This prototype controls crossfade timing locally; independent streaming decks, per-track cue points, EQ automation and Spotify's cloud mixed-playlist editor are not implemented.")
                     .font(.footnote)

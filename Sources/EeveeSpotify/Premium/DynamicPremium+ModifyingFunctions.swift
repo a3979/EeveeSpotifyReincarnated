@@ -36,13 +36,8 @@ func modifyRemoteConfiguration(_ configuration: inout UcsResponse) {
 private let propertyReplacements = [
     // Append when the account's config omits them, so they work without overwrite-configuration.
     EeveePropertyReplacement(name: "crossfade_enabled", scope: "ios-feature-settings", modification: .forceBool(true)),
-    EeveePropertyReplacement(name: "automix_enabled", scope: "ios-feature-settings", modification: .forceBool(true)),
-    // Experimental playlist Mix UI gates (Spotify 9.2.0).
-    // These only request client UI; account/server entitlement is not bypassed.
-    EeveePropertyReplacement(name: "is_enabled", scope: "ios-playlistcuration-mats", modification: .forceBool(true)),
-    EeveePropertyReplacement(name: "header_mix_button_enabled", scope: "ios-playlistcuration-mats", modification: .forceBool(true)),
-    EeveePropertyReplacement(name: "create_new_mixed_playlist_enabled", scope: "ios-playlistmixing-createmenuitemimpl", modification: .forceBool(true)),
-    EeveePropertyReplacement(name: "free_experience_enabled", scope: "ios-playlistcuration-mats", modification: .forceBool(true)),
+    // Spotify Premium playlist Mix controls are intentionally not forced here.
+    // A separate local toggle owns our experiment and must remain reversible.
 
     // ios featue only draws the row, the player core gates the fade on its own scope
     EeveePropertyReplacement(name: "crossfade_enabled", scope: "core-playback-setup", modification: .forceBool(true)),
