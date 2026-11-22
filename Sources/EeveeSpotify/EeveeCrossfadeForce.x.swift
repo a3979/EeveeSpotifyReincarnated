@@ -11,14 +11,43 @@ class PreferencesCrossfadeHook: ClassHook<NSObject> {
     typealias Group = EeveeCrossfadePrefGroup
     static let targetName = "_TtC31Preferences_CorePreferencesImpl28SPTPreferencesImplementation"
 
-    func setAudioCrossfadeTime(_ value: Int) {
-        orig.setAudioCrossfadeTime(value)
-        orig.setAudioCrossfade(value > 0)
+    func audioCrossfadeTime() -> Int {
+        let raw = orig.audioCrossfadeTime()
+        let source = target
+        if Thread.isMainThread {
+            MixPlaylistRuntime.observe(source, milliseconds: raw)
+        } else {
+            DispatchQueue.main.async { MixPlaylistRuntime.observe(source, milliseconds: raw) }
+        }
+        return raw
     }
 
-    // Passthrough; declared so orig.setAudioCrossfade is callable above.
+    func audioCrossfade() -> Bool {
+        let value = orig.audioCrossfade()
+        let source = target
+        if Thread.isMainThread {
+            MixPlaylistRuntime.observedSwitch(source, value: value)
+        } else {
+            DispatchQueue.main.async { MixPlaylistRuntime.observedSwitch(source, value: value) }
+        }
+        return value || MixPlaylistRuntime.enabled
+    }
+
+    func setAudioCrossfadeTime(_ value: Int) {
+        orig.setAudioCrossfadeTime(value)
+        guard !MixPlaylistRuntime.beginNativeSetter() else { return }
+        // Spotify's duration slider otherwise fails to arm the native fade.
+        orig.setAudioCrossfade(value > 0 || MixPlaylistRuntime.enabled)
+        let source = target
+        if Thread.isMainThread {
+            MixPlaylistRuntime.observedNativeSetter(source, value: value)
+        } else {
+            DispatchQueue.main.async { MixPlaylistRuntime.observedNativeSetter(source, value: value) }
+        }
+    }
+
     func setAudioCrossfade(_ value: Bool) {
-        orig.setAudioCrossfade(value)
+        orig.setAudioCrossfade(value || MixPlaylistRuntime.enabled)
     }
 }
 
