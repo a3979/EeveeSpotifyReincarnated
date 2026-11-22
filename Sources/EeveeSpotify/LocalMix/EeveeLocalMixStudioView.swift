@@ -68,7 +68,7 @@ private struct EditableTrack: Identifiable {
 }
 
 struct EeveeLocalMixStudioView: View {
-    @StateObject private var studio = LocalMixStudio()
+    @StateObject private var studio = LocalMixStudio.shared
     @State private var importingAudio = false
     @State private var importingProject = false
     @State private var sharing = false
