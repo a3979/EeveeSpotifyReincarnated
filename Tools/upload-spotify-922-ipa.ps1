@@ -1,6 +1,6 @@
-# Upload a user-supplied Spotify 9.2.2 IPA to a temporary Filebin link
+# Upload a user-supplied Spotify 9.2.2 IPA to temporary Litterbox storage.
 # The file is renamed .zip for broad host compatibility; its bytes are not modified.
-# Anyone with the link can access it. Filebin links are temporary.
+# Litterbox links are public to anyone with the URL and expire after 72 hours.
 
 $ErrorActionPreference = "Stop"
 
@@ -20,26 +20,25 @@ $file = Get-Item -LiteralPath $dialog.FileName
 if ($file.Length -lt 50000000) {
     throw "The selected file is unexpectedly small ($($file.Length) bytes). Select the complete Spotify IPA."
 }
+if ($file.Length -gt 200000000) {
+    throw "The selected file exceeds Litterbox's documented 200 MB upload limit."
+}
 
-$curl = Get-Command curl.exe -ErrorAction SilentlyContinue
-if (-not $curl) {
+if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) {
     throw "curl.exe was not found. Use a current Windows 10/11 installation or install curl."
 }
 
 $sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-$bin = [Guid]::NewGuid().ToString("N").Substring(0, 20)
 $hostName = "spotify-9.2.2-base.zip"
-$encodedName = [Uri]::EscapeDataString($hostName)
-$binUrl = "https://filebin.net/$bin"
-$uploadUrl = "$binUrl/$encodedName"
-$responsePath = Join-Path $env:TEMP ("filebin-upload-" + [Guid]::NewGuid().ToString("N") + ".json")
+$uploadUrl = "https://litterbox.catbox.moe/resources/internals/api.php"
+$responsePath = Join-Path $env:TEMP ("litterbox-upload-" + [Guid]::NewGuid().ToString("N") + ".txt")
 
 Write-Host ""
 Write-Host "File:   $($file.Name)"
 Write-Host "Size:   $([Math]::Round($file.Length / 1MB, 2)) MB"
 Write-Host "SHA256: $sha256"
 Write-Host ""
-Write-Warning "Filebin is a temporary link host. Anyone with the link can access the uploaded file. Do not continue if you do not want to share this IPA through a link."
+Write-Warning "Litterbox is temporary public hosting. Anyone with the link can download the file. It expires after 72 hours."
 $confirm = Read-Host "Type UPLOAD to continue"
 if ($confirm -cne "UPLOAD") {
     Write-Host "Cancelled. Nothing was uploaded."
@@ -48,58 +47,44 @@ if ($confirm -cne "UPLOAD") {
 
 $curlArgs = @(
     "--fail", "--show-error", "--silent",
-    "--request", "POST",
-    "--header", "Content-Type: application/octet-stream",
-    "--header", "Content-SHA256: $sha256",
-    "--data-binary", "@$($file.FullName)",
+    "--form", "reqtype=fileupload",
+    "--form", "time=72h",
+    "--form", "fileToUpload=@$($file.FullName);filename=$hostName",
     "--output", $responsePath,
     $uploadUrl
 )
 
-Write-Host "Uploading to Filebin..."
+Write-Host "Uploading to temporary storage..."
 & curl.exe @curlArgs
 if ($LASTEXITCODE -ne 0) {
-    throw "Filebin upload failed (curl exit code $LASTEXITCODE). The service may be at capacity; try again later or use a private file host with a direct download URL."
+    throw "Litterbox upload failed (curl exit code $LASTEXITCODE). Check your connection and try again."
 }
 
 try {
-    $upload = Get-Content -LiteralPath $responsePath -Raw | ConvertFrom-Json
+    $directUrl = (Get-Content -LiteralPath $responsePath -Raw).Trim()
 } finally {
     Remove-Item -LiteralPath $responsePath -Force -ErrorAction SilentlyContinue
 }
 
-if ($upload.file -and $upload.file.sha256 -and $upload.file.sha256.ToLowerInvariant() -ne $sha256) {
-    throw "Filebin's returned SHA256 does not match the local file."
-}
-
-$binInfo = Invoke-RestMethod -Method Get -Uri $binUrl -Headers @{ Accept = "application/json" }
-$remote = $binInfo.files | Where-Object { $_.filename -eq $hostName } | Select-Object -First 1
-if (-not $remote) {
-    throw "The upload response was received, but the file could not be found in the bin."
-}
-if ($remote.sha256 -and $remote.sha256.ToLowerInvariant() -ne $sha256) {
-    throw "Remote SHA256 verification failed."
+if ($directUrl -notmatch '^https://litterbox\.catbox\.moe/') {
+    throw "The upload service did not return a valid direct-download URL. Response: $directUrl"
 }
 
 try {
-    & curl.exe --fail --show-error --silent --request PUT --output NUL $binUrl
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "The upload succeeded, but Filebin did not confirm the read-only lock."
-    }
+    Set-Clipboard -Value $directUrl
+    $copied = $true
 } catch {
-    Write-Warning "The upload succeeded, but the read-only lock could not be applied."
+    $copied = $false
 }
 
-$directUrl = "$binUrl/$encodedName"
-
 Write-Host ""
-Write-Host "UPLOAD VERIFIED" -ForegroundColor Green
-Write-Host "Remote SHA256: $sha256"
-Write-Host ""
+Write-Host "UPLOAD COMPLETE" -ForegroundColor Green
+Write-Host "Local SHA256: $sha256"
 Write-Host "DIRECT DOWNLOAD URL:"
 Write-Host $directUrl -ForegroundColor Cyan
+if ($copied) { Write-Host "The URL has been copied to your clipboard." }
 Write-Host ""
 Write-Host "Paste that direct URL into GitHub Actions > Build EeveeSpotify 7.5.0 + Local Mix Studio (Spotify 9.2.2) > Run workflow."
-Write-Host "The filebin link is temporary. Delete the bin after the build if you no longer need it."
+Write-Host "The Litterbox link expires after 72 hours."
 Write-Host ""
 [void](Read-Host "Press Enter to close")
