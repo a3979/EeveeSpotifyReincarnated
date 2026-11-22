@@ -113,7 +113,17 @@ final class PlaylistActionRow: UIView {
     }
 
     private let shuffleButton = PlaylistActionRow.circle("shuffle")
-    private let mixButton = PlaylistActionRow.circle("waveform")
+    private let mixButton: UIButton = {
+        var config = UIButton.Configuration.glass()
+        config.cornerStyle = .capsule
+        config.title = "Mix"
+        config.image = UIImage(systemName: "waveform", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold))
+        config.imagePlacement = .leading
+        config.imagePadding = 5
+        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12)
+        config.baseForegroundColor = .white
+        return UIButton(configuration: config)
+    }()
     private var mixStateObserver: NSObjectProtocol?
     private let shuffleDot: UIView = {
         let dot = UIView(frame: CGRect(x: 0, y: 0, width: 4, height: 4))
@@ -177,7 +187,7 @@ final class PlaylistActionRow: UIView {
         mixButton.isHidden = true
         mixButton.accessibilityIdentifier = "Eevee.Playlist.Mix"
         mixButton.accessibilityLabel = "Local Beat Mix Off"
-        mixButton.accessibilityHint = "Turns on locally analyzed beat-aware crossfading for this playlist."
+        mixButton.accessibilityHint = "Tap to toggle Local Beat Mix. Long-press to choose a 4, 8, or 16-beat transition."
         artistDownloadButton.accessibilityIdentifier = "Eevee.Artist.Download"
         artistDownloadButton.accessibilityLabel = "Artist downloads"
         artistDownloadButton.isHidden = true
@@ -204,6 +214,7 @@ final class PlaylistActionRow: UIView {
             }
             self.sync()
         }, for: .primaryActionTriggered)
+        updateMixMenu()
         mixStateObserver = NotificationCenter.default.addObserver(
             forName: .eeveeLocalMixStateChanged, object: nil, queue: .main
         ) { [weak self] _ in self?.sync() }
@@ -238,7 +249,7 @@ final class PlaylistActionRow: UIView {
             x += size.width + gap
         }
         for button in [shuffleButton, mixButton, artistDownloadButton, addButton, shareButton, followButton] where !button.isHidden {
-            let width = side
+            let width: CGFloat = button === mixButton ? 72 : side
             let frame = CGRect(x: x, y: 0, width: width, height: side)
             if button.frame != frame { button.frame = frame }
             x += width + gap
@@ -361,6 +372,19 @@ final class PlaylistActionRow: UIView {
         return nil
     }
 
+    private func updateMixMenu() {
+        let selectedBeats = LocalMixRuntime.beats
+        mixButton.menu = UIMenu(title: "Transition Length", children: [4, 8, 16].map { beats in
+            UIAction(
+                title: "\(beats) beats",
+                state: selectedBeats == beats ? .on : .off
+            ) { _ in
+                LocalMixRuntime.setBeats(beats)
+            }
+        })
+        mixButton.showsMenuAsPrimaryAction = false
+    }
+
     func sync() {
         let isPlaylist = sourceRoot.flatMap { pageURI(from: $0) }?.hasPrefix("spotify:playlist:") == true
         let hideMix = !isPlaylist
@@ -375,6 +399,7 @@ final class PlaylistActionRow: UIView {
         mixButton.isSelected = mixEnabled
         mixButton.accessibilityLabel = mixEnabled ? "Local Beat Mix On" : "Local Beat Mix Off"
         mixButton.accessibilityValue = mixEnabled ? "On" : "Off"
+        updateMixMenu()
 
         if addButton.isHidden != (add == nil) {
             addButton.isHidden = add == nil
