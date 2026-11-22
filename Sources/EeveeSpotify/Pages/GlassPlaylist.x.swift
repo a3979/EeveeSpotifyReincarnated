@@ -18,7 +18,7 @@ enum LocalMixPlaylistUI {
 
         let scroll: UIScrollView?
         if let listClass = NSClassFromString(PlaylistListHook.targetName) {
-            scroll = root.eeveeFirst(UIScrollView.self) { $0.isKind(of: listClass) } as? UIScrollView
+            scroll = root.eeveeFirst(UIScrollView.self) { $0.isKind(of: listClass) }
         } else {
             scroll = nil
         }
