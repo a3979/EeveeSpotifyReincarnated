@@ -86,6 +86,13 @@ enum MixPlaylistRuntime {
         }
         if preferences == nil { preferences = object }
         if !capturedOriginal && !applying { originalEnabled = value }
+        // Some Spotify builds only ask whether crossfade is on, never calling
+        // the duration getter. Still attach to the correct preference object.
+        if enabled && requestedMilliseconds < 0 && !applying {
+            DispatchQueue.main.async {
+                if enabled && requestedMilliseconds < 0 { apply() }
+            }
+        }
     }
 
     static func beginNativeSetter() -> Bool { applying }
