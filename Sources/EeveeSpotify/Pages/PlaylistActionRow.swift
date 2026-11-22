@@ -383,8 +383,12 @@ final class PlaylistActionRow: UIView {
     }
 
     func sync() {
-        let isPlaylist = sourceRoot.flatMap { pageURI(from: $0) }?.hasPrefix("spotify:playlist:") == true
-        let hideMix = !isPlaylist
+        // Spotify 9.2.2 may not expose a page URI through the responder chain
+        // on its SwiftUI-backed free-tier playlist. An unknown URI must not
+        // hide our Mix action: this row is installed from a verified playlist
+        // header, so only a positively identified non-playlist page hides it.
+        let page = sourceRoot.flatMap { pageURI(from: $0) }
+        let hideMix = page.map { !$0.hasPrefix("spotify:playlist:") } ?? false
         if mixButton.isHidden != hideMix {
             mixButton.isHidden = hideMix
             setNeedsLayout()
