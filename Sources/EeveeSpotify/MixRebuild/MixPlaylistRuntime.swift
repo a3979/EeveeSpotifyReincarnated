@@ -170,6 +170,7 @@ enum MixPlaylistRuntime {
             // enables Local Mix. Keep it out of Spotify's launch path.
             activateRegularPlayerProbe()
             activatePlaybackVerification()
+            activateMixNativeServiceProbe()
             peakNativePCMPaths = 0
             peakAVPCMPaths = 0
             startPlaybackSampling()
