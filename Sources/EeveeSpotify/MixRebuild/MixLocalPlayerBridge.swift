@@ -36,6 +36,7 @@ final class MixLocalPlayerBridge {
     private var lastProgress = 0.0
     private var lastError = ""
     private var ticks = 0
+    private var lastPrepareAttemptAt: Date = .distantPast
 
     private init() {}
 
@@ -94,6 +95,7 @@ final class MixLocalPlayerBridge {
         playerList = nil
         currentQueue = nil
         activeTrackURI = nil
+        lastPrepareAttemptAt = .distantPast
         phase = .off
         lastProgress = 0
     }
@@ -120,7 +122,7 @@ final class MixLocalPlayerBridge {
     }
 
     private func activeSourceIDs() -> [UInt32] {
-        var ids = [UInt32](repeating: 0, count: 16)
+        var ids = [UInt32](repeating: 0, count: 128)
         let count = ids.withUnsafeMutableBufferPointer { buffer -> UInt32 in
             guard let base = buffer.baseAddress else { return 0 }
             return MixRebuildReadActiveNativePCMSourceIDs(base, UInt32(buffer.count))
@@ -142,19 +144,16 @@ final class MixLocalPlayerBridge {
             "mixbeats"
         ]
         var raw: Any?
-        if let metadata = track.value(forKey: "metadata") as? NSDictionary {
+        if let metadata = MixRebuildTrackMetadata(track) as? NSDictionary {
             for key in extensionKeys {
                 if let value = metadata[key] { raw = value; break }
             }
         }
         if raw == nil {
-            let selector = NSSelectorFromString("metadataValueForKey:")
-            if track.responds(to: selector) {
-                for key in extensionKeys {
-                    if let value = track.perform(selector, with: key)?.takeUnretainedValue() {
-                        raw = value
-                        break
-                    }
+            for key in extensionKeys {
+                if let value = MixRebuildTrackMetadataValue(track, key) {
+                    raw = value
+                    break
                 }
             }
         }
@@ -273,6 +272,11 @@ final class MixLocalPlayerBridge {
     }
 
     private func prepareNextTrack(outgoingDurationMs: Double) {
+        let now = Date()
+        // The playback timer runs at 20 Hz; player-service/queue discovery does
+        // not need to run at that rate when no next track is available.
+        guard now.timeIntervalSince(lastPrepareAttemptAt) >= 0.5 else { return }
+        lastPrepareAttemptAt = now
         guard let mainPlayer else { return }
         guard let service = MixRebuildRegularPlayerService() as? NSObject else {
             phase = .waitingForPlayer
@@ -283,7 +287,7 @@ final class MixLocalPlayerBridge {
         }
         guard let queue = currentQueue,
               let nextTrack = MixRebuildQueueNextTrack(queue) as? NSObject,
-              let nextURI = nextTrack.value(forKey: "URI") as AnyObject?,
+              let nextURI = MixRebuildTrackURI(nextTrack) as AnyObject?,
               let uriString = urlString(nextURI) else {
             phase = .waitingForQueue
             return
@@ -349,7 +353,7 @@ final class MixLocalPlayerBridge {
     }
 
     private func registeredSourceIDs() -> [UInt32] {
-        var ids = [UInt32](repeating: 0, count: 32)
+        var ids = [UInt32](repeating: 0, count: 128)
         let count = ids.withUnsafeMutableBufferPointer { buffer -> UInt32 in
             guard let base = buffer.baseAddress else { return 0 }
             return MixRebuildReadRegisteredNativePCMSourceIDs(base, UInt32(buffer.count))
@@ -423,6 +427,7 @@ final class MixLocalPlayerBridge {
         MixRebuildResetNativePCMSourceGains()
         clearSecondary()
         activeTrackURI = uri
+        lastPrepareAttemptAt = .distantPast
         currentQueue = MixRebuildRegularPlayerQueue() as? NSObject
         phase = .waitingForQueue
     }
