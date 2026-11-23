@@ -433,6 +433,17 @@ id MixRebuildPlayerTrack(id player) {
 id MixRebuildPlayerTrackURI(id player) {
     return MixRebuildObjectGetter(MixRebuildPlayerTrack(player), @"URI");
 }
+id MixRebuildTrackURI(id track) {
+    return MixRebuildObjectGetter(track, @"URI");
+}
+id MixRebuildTrackMetadata(id track) {
+    return MixRebuildObjectGetter(track, @"metadata");
+}
+id MixRebuildTrackMetadataValue(id track, id key) {
+    Method method = MixRebuildVerifiedMethod(track, @"metadataValueForKey:", "@24@0:8@16");
+    if (!method || !key) return nil;
+    return ((id (*)(id, SEL, id))objc_msgSend)(track, method_getName(method), key);
+}
 static double MixRebuildDoubleGetter(id target, NSString *selectorName) {
     Method method = MixRebuildVerifiedMethod(target, selectorName, "d16@0:8");
     if (!method) return -1.0;
@@ -465,6 +476,12 @@ id MixRebuildQueueForNextTrack(id queue) {
     if (!nextTrack) return nil;
     id copy = [queue conformsToProtocol:@protocol(NSCopying)] ? [queue copy] : nil;
     if (!copy) return nil;
+    Method setTrack = MixRebuildVerifiedMethod(copy, @"setTrack:", "v24@0:8@16");
+    Method setPrev = MixRebuildVerifiedMethod(copy, @"setPrevTracks:", "v24@0:8@16");
+    Method setNext = MixRebuildVerifiedMethod(copy, @"setNextTracks:", "v24@0:8@16");
+    // Spotify's queue model is private. If any setter ABI differs on this
+    // version, abandon the secondary deck rather than calling an unknown ABI.
+    if (!setTrack || !setPrev || !setNext) return nil;
     id currentTrack = MixRebuildObjectGetter(queue, @"track");
     NSArray *previous = MixRebuildObjectGetter(queue, @"prevTracks") ?: @[];
     NSArray *next = MixRebuildObjectGetter(queue, @"nextTracks") ?: @[];
@@ -472,9 +489,9 @@ id MixRebuildQueueForNextTrack(id queue) {
     if (currentTrack) [newPrevious addObject:currentTrack];
     [newPrevious addObjectsFromArray:previous];
     NSArray *remaining = next.count > 1 ? [next subarrayWithRange:NSMakeRange(1, next.count - 1)] : @[];
-    ((void (*)(id, SEL, id))objc_msgSend)(copy, NSSelectorFromString(@"setTrack:"), nextTrack);
-    ((void (*)(id, SEL, id))objc_msgSend)(copy, NSSelectorFromString(@"setPrevTracks:"), newPrevious);
-    ((void (*)(id, SEL, id))objc_msgSend)(copy, NSSelectorFromString(@"setNextTracks:"), remaining);
+    ((void (*)(id, SEL, id))objc_msgSend)(copy, method_getName(setTrack), nextTrack);
+    ((void (*)(id, SEL, id))objc_msgSend)(copy, method_getName(setPrev), newPrevious);
+    ((void (*)(id, SEL, id))objc_msgSend)(copy, method_getName(setNext), remaining);
     return copy;
 }
 BOOL MixRebuildPromotePlayer(id playerList, id player) {
