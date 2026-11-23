@@ -1,5 +1,7 @@
 import UIKit
 import Orion
+import Foundation
+import UIKit
 import ObjectiveC.runtime
 
 /// Installed only for playlist screens in Spotify's own navigation hierarchy.
