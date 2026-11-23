@@ -29,6 +29,7 @@ typedef struct {
     _Atomic(const AudioStreamBasicDescription *) format;
     atomic_uint_fast64_t callbacks, frames, bytes, nonzero, errors, lastTick;
     atomic_uint lastFrames, peak;
+    atomic_uint gainQ16;
 } SAPContext;
 
 static atomic_uint energyWriteIndex;
@@ -36,6 +37,7 @@ static atomic_uint energyValues[SAP_ENERGY_CAPACITY];
 static atomic_uint_fast64_t energyTicks[SAP_ENERGY_CAPACITY];
 static _Atomic(SAPContext *) energyOwner;
 static atomic_uint_fast64_t energyLastSampleTick;
+static atomic_bool muteNextNativePCMSource;
 
 static SAPBackend api;
 static atomic_bool backendReady, exhausted;
@@ -198,6 +200,52 @@ static double rmsLevel(const AudioBufferList *data, const AudioStreamBasicDescri
     return sampled ? sqrt(sumSquares / (double)sampled) : 0.0;
 }
 
+// Apply a per-player gain directly to decoded PCM immediately before Spotify's
+// output unit consumes it. This never copies, stores, exports, or decrypts audio.
+// The render path uses only fixed buffers and lock-free atomic reads.
+static void applyGain(SAPContext *context, AudioBufferList *data,
+                      const AudioStreamBasicDescription *format, UInt32 frames) {
+    if (!context || context->external || !data || !format || !formatSupported(format)) return;
+    const uint32_t q16 = atomic_load_explicit(&context->gainQ16, memory_order_relaxed);
+    if (q16 == 65536) return;
+    const double gain = (double)q16 / 65536.0;
+    const unsigned bytesPerSample = format->mBitsPerChannel / 8;
+    for (UInt32 b = 0; b < data->mNumberBuffers; ++b) {
+        AudioBuffer *buffer = &data->mBuffers[b];
+        if (!buffer->mData) continue;
+        const uint64_t count = availableBytes(buffer, format, frames) / bytesPerSample;
+        if (format->mFormatFlags & kAudioFormatFlagIsFloat) {
+            for (uint64_t i = 0; i < count; ++i) {
+                float sample;
+                memcpy(&sample, (char *)buffer->mData + i * sizeof(float), sizeof(float));
+                if (!isfinite(sample)) continue;
+                sample = (float)fmax(-1.0, fmin(1.0, (double)sample * gain));
+                memcpy((char *)buffer->mData + i * sizeof(float), &sample, sizeof(float));
+            }
+        } else if (format->mBitsPerChannel == 16) {
+            for (uint64_t i = 0; i < count; ++i) {
+                int16_t sample;
+                memcpy(&sample, (char *)buffer->mData + i * sizeof(int16_t), sizeof(int16_t));
+                int32_t scaled = (int32_t)lrint((double)sample * gain);
+                if (scaled > INT16_MAX) scaled = INT16_MAX;
+                if (scaled < INT16_MIN) scaled = INT16_MIN;
+                sample = (int16_t)scaled;
+                memcpy((char *)buffer->mData + i * sizeof(int16_t), &sample, sizeof(int16_t));
+            }
+        } else if (format->mBitsPerChannel == 32) {
+            for (uint64_t i = 0; i < count; ++i) {
+                int32_t sample;
+                memcpy(&sample, (char *)buffer->mData + i * sizeof(int32_t), sizeof(int32_t));
+                int64_t scaled = (int64_t)llround((double)sample * gain);
+                if (scaled > INT32_MAX) scaled = INT32_MAX;
+                if (scaled < INT32_MIN) scaled = INT32_MIN;
+                sample = (int32_t)scaled;
+                memcpy((char *)buffer->mData + i * sizeof(int32_t), &sample, sizeof(int32_t));
+            }
+        }
+    }
+}
+
 // Keep one native PCM producer as the BPM source. Sampling is throttled to
 // approximately 50 Hz and stores only normalized RMS values plus monotonic
 // timestamps; no audio samples are copied or persisted.
@@ -267,6 +315,7 @@ static void processPCM(SAPContext *context, const AudioStreamBasicDescription *f
         if (level) atomic_fetch_add_explicit(&context->nonzero, 1, memory_order_relaxed);
         recordEnergy(context, rmsLevel(data, format, frames), now);
     }
+    if (writable) applyGain(context, data, format, frames);
     if (writable && callback) callback(format, data, frames);
 }
 
@@ -322,6 +371,7 @@ void SAPProcessExternal(const void *identity, const char *path,
         }
         if (!context && count < SAP_MAX_CONTEXTS && formatCount < SAP_MAX_FORMATS) {
             context = &contexts[count]; context->external = true; context->unit = (AudioUnit)identity;
+            atomic_store_explicit(&context->gainQ16, 65536u, memory_order_relaxed);
             snprintf(context->image, sizeof(context->image), "%s", path);
             formats[formatCount] = *format;
             atomic_store(&context->format, &formats[formatCount++]);
@@ -365,6 +415,9 @@ SAP_EXPORT OSStatus AudioUnitSetProperty(AudioUnit unit, AudioUnitPropertyID pro
                 SAPContext *context = &contexts[index];
                 context->unit = unit; context->scope = scope; context->element = element;
                 context->original = *incoming;
+                atomic_store_explicit(&context->gainQ16,
+                    atomic_exchange_explicit(&muteNextNativePCMSource, false, memory_order_acq_rel) ? 0u : 65536u,
+                    memory_order_relaxed);
                 Dl_info info = {0};
                 if (dladdr((const void *)incoming->inputProc, &info) && info.dli_fname)
                     snprintf(context->image, sizeof(context->image), "%s", info.dli_fname);
@@ -539,6 +592,67 @@ SAP_EXPORT void SAPReadActivePCMSourceCounts(uint32_t *nativeCount, uint32_t *ex
             else ++*nativeCount;
         }
     }
+}
+
+
+// These controls are called from the main thread; render callbacks only read
+// the per-context gain atomically. IDs are stable context indices returned by
+// SAPReadActiveNativePCMSourceIDs.
+SAP_EXPORT void SAPArmNextNativePCMSourceMuted(void) {
+    atomic_store_explicit(&muteNextNativePCMSource, true, memory_order_release);
+}
+SAP_EXPORT void SAPCancelNextNativePCMSourceMute(void) {
+    atomic_store_explicit(&muteNextNativePCMSource, false, memory_order_release);
+}
+SAP_EXPORT uint32_t SAPReadActiveNativePCMSourceIDs(uint32_t *ids, uint32_t capacity) {
+    if (!ids || !capacity || !timebase.numer || !timebase.denom) return 0;
+    const uint64_t now = mach_absolute_time();
+    const uint64_t window = (uint64_t)(350000000.0 * (double)timebase.denom /
+                                       (double)timebase.numer);
+    const unsigned count = atomic_load_explicit(&contextCount, memory_order_acquire);
+    uint32_t written = 0;
+    for (unsigned i = 0; i < count && i < SAP_MAX_CONTEXTS && written < capacity; ++i) {
+        SAPContext *ctx = &contexts[i];
+        if (ctx->external || !atomic_load_explicit(&ctx->published, memory_order_acquire) ||
+            atomic_load_explicit(&ctx->retired, memory_order_acquire) ||
+            !atomic_load_explicit(&ctx->receivedPCM, memory_order_relaxed)) continue;
+        const uint64_t tick = atomic_load_explicit(&ctx->lastTick, memory_order_relaxed);
+        if (!tick || now < tick || now - tick > window) continue;
+        bool duplicate = false;
+        for (unsigned j = 0; j < i; ++j) {
+            SAPContext *previous = &contexts[j];
+            if (previous->external || previous->unit != ctx->unit ||
+                atomic_load_explicit(&previous->retired, memory_order_acquire) ||
+                !atomic_load_explicit(&previous->published, memory_order_acquire)) continue;
+            const uint64_t priorTick = atomic_load_explicit(&previous->lastTick, memory_order_relaxed);
+            if (priorTick && now >= priorTick && now - priorTick <= window) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) ids[written++] = i;
+    }
+    return written;
+}
+SAP_EXPORT void SAPSetNativePCMSourceGain(uint32_t sourceID, float gain) {
+    if (!isfinite(gain)) return;
+    if (gain < 0.0f) gain = 0.0f;
+    if (gain > 1.0f) gain = 1.0f;
+    const unsigned count = atomic_load_explicit(&contextCount, memory_order_acquire);
+    if (sourceID >= count || sourceID >= SAP_MAX_CONTEXTS) return;
+    SAPContext *ctx = &contexts[sourceID];
+    if (ctx->external || !atomic_load_explicit(&ctx->published, memory_order_acquire) ||
+        atomic_load_explicit(&ctx->retired, memory_order_acquire)) return;
+    const uint32_t q16 = (uint32_t)lrintf(gain * 65536.0f);
+    atomic_store_explicit(&ctx->gainQ16, q16, memory_order_release);
+}
+SAP_EXPORT void SAPResetNativePCMSourceGains(void) {
+    const unsigned count = atomic_load_explicit(&contextCount, memory_order_acquire);
+    for (unsigned i = 0; i < count && i < SAP_MAX_CONTEXTS; ++i) {
+        if (!contexts[i].external)
+            atomic_store_explicit(&contexts[i].gainQ16, 65536u, memory_order_release);
+    }
+    atomic_store_explicit(&muteNextNativePCMSource, false, memory_order_release);
 }
 
 #ifdef SAP_TESTING

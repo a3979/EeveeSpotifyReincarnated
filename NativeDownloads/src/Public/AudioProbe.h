@@ -47,6 +47,11 @@ SAP_EXPORT void SpotifyAudioProbeReadSnapshot(SAPSnapshot *snapshot);
 SAP_EXPORT void SpotifyAudioProbeReadEnergyEnvelope(double *values, uint32_t capacity,
                                                      uint32_t *sampleCount, double *sampleHz);
 SAP_EXPORT void SpotifyAudioProbeInitialize(void);
+SAP_EXPORT void SAPArmNextNativePCMSourceMuted(void);
+SAP_EXPORT void SAPCancelNextNativePCMSourceMute(void);
+SAP_EXPORT uint32_t SAPReadActiveNativePCMSourceIDs(uint32_t *ids, uint32_t capacity);
+SAP_EXPORT void SAPSetNativePCMSourceGain(uint32_t sourceID, float gain);
+SAP_EXPORT void SAPResetNativePCMSourceGains(void);
 
 // Producer-side paths (AVFoundation scheduling, not the hardware render thread).
 void SAPProcessExternal(const void *identity, const char *path,
