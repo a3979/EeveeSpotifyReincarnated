@@ -134,9 +134,14 @@ enum MixRebuildCore {
         func isDownbeat(_ beat: MixRebuildBeat) -> Bool {
             beat.beatInBar == 0 || beat.downbeatConfidence >= 0.55
         }
+        // Never choose an outgoing downbeat so late that the fade cannot
+        // finish before the source track ends. The incoming deck is already
+        // playing, so a slightly shorter transition is safer than a stalled
+        // handoff at end-of-track.
+        let latestSafeStart = durationMs / 1000.0 - overlapSeconds * 0.75
         let outCandidates = a.beats.filter {
             $0.time.isFinite && $0.time >= max(0, outTarget - 5) &&
-            $0.time <= durationMs / 1000.0 - overlapSeconds * 0.35 &&
+            $0.time <= latestSafeStart &&
             isDownbeat($0) && $0.downbeatConfidence >= 0.35
         }
         let inCandidates = b.beats.filter {
@@ -147,14 +152,18 @@ enum MixRebuildCore {
             abs($0.time - outTarget) < abs($1.time - outTarget)
         }), let inBeat = inCandidates.first else { return fallback() }
 
-        let lengthMs = Int(overlapSeconds * 1000)
+        let remainingAfterDownbeat = durationMs / 1000.0 - outBeat.time
+        let actualOverlapSeconds = min(overlapSeconds, remainingAfterDownbeat)
+        guard actualOverlapSeconds >= overlapSeconds * 0.75 else { return fallback() }
+        let lengthMs = Int(actualOverlapSeconds * 1000)
+        let actualBars = max(1, Int((actualOverlapSeconds / barSeconds).rounded()))
         return MixRebuildOverlap(
             outStartPositionMs: max(0, Int(outBeat.time * 1000)),
             inStartPositionMs: max(0, Int(inBeat.time * 1000)),
             outSpeed: 1,
             inSpeed: Float(ratio),
             durationMs: lengthMs,
-            durationBars: bars,
+            durationBars: actualBars,
             isBeatmatched: true,
             bpmA: a.bpm,
             bpmB: b.bpm,
