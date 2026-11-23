@@ -23,8 +23,15 @@ on:
     branches: [mix-rebuild-clean-20261122]
     paths:
       - '.github/workflows/mix-rebuild-build-ipa.yml'
+      - 'Sources/EeveeSpotify/MixRebuild/**'
       - 'Sources/EeveeSpotify/LocalMix/**'
+      - 'Sources/EeveeSpotify/Tweak.x.swift'
       - 'Sources/EeveeSpotify/Settings/Views/EeveeSettingsView.swift'
+      - 'Sources/EeveeSpotifyC/**'
+      - 'NativeDownloads/src/Diagnostics/AudioProbe.c'
+      - 'NativeDownloads/src/Public/AudioProbe.h'
+      - 'Makefile'
+      - 'Tests/MixRebuild/**'
       - 'Tests/LocalMix/**'
       - 'Scripts/run-tests.sh'
       - 'layout/Library/Application Support/EeveeSpotify.bundle/en.lproj/Localizable.strings'
