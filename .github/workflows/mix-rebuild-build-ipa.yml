@@ -130,14 +130,6 @@ jobs:
           unzip -p "$RUNNER_TEMP/spotify.ipa" Payload/Spotify.app/Info.plist > "$RUNNER_TEMP/spotify.plist"
           test "$(plutil -extract CFBundleIdentifier raw "$RUNNER_TEMP/spotify.plist")" = "com.spotify.client"
           test "$(plutil -extract CFBundleShortVersionString raw "$RUNNER_TEMP/spotify.plist")" = "9.2.2"
-      - name: Download Orion
-        run: |
-          set -euo pipefail
-          curl --fail --location --retry 3 https://github.com/zbzxbg/es-build-tools/releases/download/v1.0.0/Orion.zip -o "$RUNNER_TEMP/orion.zip"
-          unzip -q "$RUNNER_TEMP/orion.zip" -d "$RUNNER_TEMP/orion"
-          ORION=$(find "$RUNNER_TEMP/orion" -type d -name Orion.framework -not -path '*__MACOSX*' | head -1)
-          test -s "$ORION/Orion"
-          echo "ORION_FW=$ORION" >> "$GITHUB_ENV"
       - name: Replace Eevee runtime in previously injected Spotify IPA
         run: |
           set -euo pipefail
@@ -153,10 +145,18 @@ jobs:
             echo "::error::Base IPA does not already load EeveeSpotify.dylib"; exit 1;
           }
           cp "$EEVEE_DY" "$APP/Frameworks/EeveeSpotify.dylib"
-          rm -rf "$APP/Frameworks/EeveeSwiftProtobuf.framework"
-          cp -R "$PROTO_FW" "$APP/Frameworks/"
-          rm -rf "$APP/Frameworks/Orion.framework"
-          cp -R "$ORION_FW" "$APP/Frameworks/"
+          # Keep the already-injected baseline frameworks. The baseline Orion
+          # has its install ID rewritten to @rpath; the raw Orion.zip binary
+          # uses /Library/Frameworks and is not safe to copy into a sideload IPA.
+          test -s "$PROTO_FW/EeveeSwiftProtobuf"
+          cmp -s "$PROTO_FW/EeveeSwiftProtobuf" "$APP/Frameworks/EeveeSwiftProtobuf.framework/EeveeSwiftProtobuf" || {
+            echo "::error::SwiftProtobuf runtime differs from the baseline IPA; refusing an unverified framework replacement"
+            exit 1
+          }
+          test "$(otool -D "$APP/Frameworks/Orion.framework/Orion" | tail -n 1)" = "@rpath/Orion.framework/Orion" || {
+            echo "::error::Baseline Orion install ID is not @rpath-compatible"
+            exit 1
+          }
           if [ -n "$EEVEE_BUNDLE" ] && [ -d "$EEVEE_BUNDLE" ]; then
             rm -rf "$APP/EeveeSpotify.bundle"
             cp -R "$EEVEE_BUNDLE" "$APP/"
@@ -174,8 +174,11 @@ jobs:
           test -s "$APP/Frameworks/EeveeSpotify.dylib"
           test -s "$APP/Frameworks/Orion.framework/Orion"
           test -s "$APP/Frameworks/EeveeSwiftProtobuf.framework/EeveeSwiftProtobuf"
+          otool -D "$APP/Frameworks/Orion.framework/Orion" | grep -Fxq "@rpath/Orion.framework/Orion"
+          otool -L "$APP/Frameworks/EeveeSpotify.dylib" | grep -Fq "@rpath/Orion.framework/Orion"
+          otool -L "$APP/Frameworks/EeveeSpotify.dylib" | grep -Fq "@rpath/EeveeSwiftProtobuf.framework/EeveeSwiftProtobuf"
           grep -aFq 'Eevee.Playlist.Mix' "$APP/Frameworks/EeveeSpotify.dylib"
-          echo "IPA validated. Device playback requires iPhone test."
+          echo "IPA validated. Device launch/playback still requires an iPhone smoke test."
       - uses: actions/upload-artifact@v4
         with:
           name: EeveeSpotify-MixRebuild-Spotify-922
