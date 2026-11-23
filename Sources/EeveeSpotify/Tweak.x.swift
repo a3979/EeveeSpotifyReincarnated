@@ -233,6 +233,7 @@ struct EeveeSpotify: Tweak {
         // dependency container and playlist UI get initialized.
         activateEeveeCrossfadeForce()
         MixPlaylistRuntime.activateRegularPlayerProbe()
+        MixPlaylistSurfaceLateInstaller.start()
         activateTelemetryBlock()
         activateTheme()
         activateLiquidGlass()
