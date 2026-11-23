@@ -392,3 +392,46 @@ class MixPlaylistFallbackHook: ClassHook<UIViewController> {
         if let root = target.viewIfLoaded { SpotifyNativeMixBinder.install(in: root) }
     }
 }
+
+// The Free-tier playlist controller is loaded lazily, often after tweak
+// initialization. Wait for that exact Spotify class before activating the
+// overlay; otherwise the Mix pill can render but taps still reach Spotify's
+// Premium editor instead of the local two-deck switch.
+enum MixPlaylistSurfaceLateInstaller {
+    private static var timer: Timer?
+    private static var attempts = 0
+    private static var installed = false
+
+    static func start() {
+        DispatchQueue.main.async {
+            guard !installed, timer == nil else { return }
+            if NSClassFromString(MixPlaylistFallbackHook.targetName) != nil {
+                activate()
+                return
+            }
+            let poll = Timer(timeInterval: 0.25, repeats: true) { _ in
+                attempts += 1
+                guard NSClassFromString(MixPlaylistFallbackHook.targetName) != nil else {
+                    if attempts >= 240 {
+                        timer?.invalidate()
+                        timer = nil
+                        eeveeLog("[MixNative] Free-tier playlist controller did not load within 60s")
+                    }
+                    return
+                }
+                timer?.invalidate()
+                timer = nil
+                activate()
+            }
+            RunLoop.main.add(poll, forMode: .common)
+            timer = poll
+        }
+    }
+
+    private static func activate() {
+        guard !installed else { return }
+        MixPlaylistFallbackGroup().activate()
+        installed = true
+        eeveeLog("[MixNative] Free-tier playlist Mix touch interceptor activated")
+    }
+}
