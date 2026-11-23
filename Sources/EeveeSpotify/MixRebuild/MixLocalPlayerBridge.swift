@@ -251,11 +251,19 @@ final class MixLocalPlayerBridge {
         }
         if phase == .waitingForSecondPCM {
             discoverIncomingSourceIfPresent()
-            if let incomingSourceID, activeSourceIDs().contains(incomingSourceID) {
+            let active = activeSourceIDs()
+            let bothDecksAreAudible = outgoingSourceID.map(active.contains) == true
+                && incomingSourceID.map(active.contains) == true
+            let secondPlayerMatchesQueue = secondaryPlayer.map { player in
+                guard let expected = incomingTrackURI,
+                      let actual = urlString(MixRebuildPlayerTrackURI(player)) else { return false }
+                return actual == expected && MixRebuildPlayerIsPlaying(player)
+            } ?? false
+            if bothDecksAreAudible && secondPlayerMatchesQueue {
                 phase = .transitioning
                 applyGains(progress: 0)
             } else if let playRequestedAt, Date().timeIntervalSince(playRequestedAt) > 4.0 {
-                fail("Spotify did not create a second independent PCM path; outgoing playback was left alone.")
+                fail("Spotify did not confirm two active PCM decks for the expected queued track; outgoing playback was left alone.")
             }
         }
         if phase == .transitioning, let overlap {
