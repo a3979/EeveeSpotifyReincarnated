@@ -30,7 +30,43 @@ assertMix(MixRebuildCore.tempoSignalDescription(
 assertMix(MixRebuildCore.tempoSignalDescription(
     energy: [Double](repeating: 0, count: 900), envelopeHz: 50
 ).contains("too quiet"), "silence should report silence, not a missing mixer")
-let a = MixRebuildCore.estimateTempo(energy: pulses(bpm: 120), envelopeHz: 50)
+func beatGrid(_ bpm: Double, duration: Double = 180, beatsPerBar: Int = 4) -> MixRebuildBeatGrid {
+    let interval = 60.0 / bpm
+    let count = Int(duration / interval)
+    let beats = (0..<count).map { i in
+        MixRebuildBeat(time: Double(i) * interval,
+                      duration: interval,
+                      beatInBar: i % beatsPerBar,
+                      beatConfidence: 0.95,
+                      downbeatConfidence: i % beatsPerBar == 0 ? 0.95 : 0.1)
+    }
+    return MixRebuildBeatGrid(beats: beats, beatsPerBar: beatsPerBar,
+                              bpm: bpm, confidence: 0.95)
+}
+let overlap = MixRebuildCore.planOverlap(
+    outgoing: beatGrid(120), incoming: beatGrid(124),
+    outgoingDurationMs: 180_000, preferredSeconds: 8
+)
+assertMix(overlap.isBeatmatched, "compatible native beat grids should align")
+assertMix(overlap.durationBars == 4 && overlap.durationMs == 8_000,
+          "8 seconds at 120 BPM should use four 4/4 bars")
+assertMix(near(Double(overlap.inSpeed), 120.0 / 124.0),
+          "incoming deck speed should match the outgoing BPM")
+assertMix(overlap.inStartPositionMs >= 1_000,
+          "incoming deck should start on an actual downbeat after its intro")
+let mismatchOverlap = MixRebuildCore.planOverlap(
+    outgoing: beatGrid(75), incoming: beatGrid(155),
+    outgoingDurationMs: 180_000, preferredSeconds: 8
+)
+assertMix(!mismatchOverlap.isBeatmatched && mismatchOverlap.inSpeed == 1,
+          "large tempo mismatch must fall back instead of extreme time-stretching")
+let fallbackOverlap = MixRebuildCore.planOverlap(
+    outgoing: nil, incoming: nil, outgoingDurationMs: 180_000, preferredSeconds: 8
+)
+assertMix(!fallbackOverlap.isBeatmatched && fallbackOverlap.durationMs == 8_000,
+          "missing beat metadata should still provide a safe smooth fade")
+
+let a = MixRebuildCore.estimateTempo(energy: pulses(bpm: 120), envelopeHz: 50)let a = MixRebuildCore.estimateTempo(energy: pulses(bpm: 120), envelopeHz: 50)
 assertMix(near(a.bpm, 120, 0.6), "detect 120 BPM synthetic beat train: \(a)")
 assertMix(a.confidence >= 0.28, "synthetic beat train has usable confidence")
 let b = MixRebuildCore.estimateTempo(energy: pulses(bpm: 100), envelopeHz: 50)

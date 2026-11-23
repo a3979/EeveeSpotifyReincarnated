@@ -21,6 +21,37 @@ struct MixRebuildTempo: Codable, Equatable, Sendable {
     static let unknown = MixRebuildTempo(bpm: 0, confidence: 0)
 }
 
+/// Beat-grid metadata mirrors the useful parts of Spotify's native
+/// playlistmixing.extensions.mixbeats payload. Times are seconds from track start.
+struct MixRebuildBeat: Codable, Equatable, Sendable {
+    let time: Double
+    let duration: Double
+    let beatInBar: Int
+    let beatConfidence: Double
+    let downbeatConfidence: Double
+}
+
+struct MixRebuildBeatGrid: Codable, Equatable, Sendable {
+    let beats: [MixRebuildBeat]
+    let beatsPerBar: Int
+    let bpm: Double
+    let confidence: Double
+}
+
+struct MixRebuildOverlap: Codable, Equatable, Sendable {
+    let outStartPositionMs: Int
+    let inStartPositionMs: Int
+    let outSpeed: Float
+    let inSpeed: Float
+    let durationMs: Int
+    let durationBars: Int
+    let isBeatmatched: Bool
+    let bpmA: Double
+    let bpmB: Double
+    let itemSpeedA: Float
+    let itemSpeedB: Float
+}
+
 enum MixRebuildCore {
     /// Spotify's preference setter accepts milliseconds, not seconds.
     /// Keep this conversion explicit and covered by regression tests.
@@ -61,6 +92,75 @@ enum MixRebuildCore {
             }
         }
         return MixRebuildPlan(style: .smooth, seconds: min(available, min(desired, 5)), incomingRate: 1)
+    }
+
+    /// Build a local transition from per-track beat grids. No Automix RPC or
+    /// Spotify Premium transition recipe is required. When beat grids are absent
+    /// or unreliable, return a plain equal-power fade rather than inventing sync.
+    static func planOverlap(
+        outgoing: MixRebuildBeatGrid?,
+        incoming: MixRebuildBeatGrid?,
+        outgoingDurationMs: Double,
+        preferredSeconds: Double
+    ) -> MixRebuildOverlap {
+        let desired = preferredSeconds.isFinite ? max(1.0, min(12.0, preferredSeconds)) : 6.0
+        let durationMs = outgoingDurationMs.isFinite ? max(0, outgoingDurationMs) : 0
+        func fallback() -> MixRebuildOverlap {
+            let length = Int(min(desired * 1000, max(1000, durationMs)))
+            return MixRebuildOverlap(
+                outStartPositionMs: max(0, Int(durationMs) - length),
+                inStartPositionMs: 0,
+                outSpeed: 1, inSpeed: 1, durationMs: length,
+                durationBars: 0, isBeatmatched: false,
+                bpmA: 0, bpmB: 0, itemSpeedA: 1, itemSpeedB: 1
+            )
+        }
+        guard let a = outgoing, let b = incoming,
+              a.beats.count >= 8, b.beats.count >= 8,
+              (2...8).contains(a.beatsPerBar), (2...8).contains(b.beatsPerBar),
+              a.confidence >= 0.45, b.confidence >= 0.45,
+              a.bpm.isFinite, b.bpm.isFinite,
+              (70...180).contains(a.bpm), (70...180).contains(b.bpm),
+              durationMs > desired * 1000 + 1000 else { return fallback() }
+
+        let ratio = a.bpm / b.bpm
+        guard (0.90...1.10).contains(ratio) else { return fallback() }
+        let barSeconds = Double(a.beatsPerBar) * 60.0 / a.bpm
+        guard barSeconds.isFinite, barSeconds > 0 else { return fallback() }
+        let bars = max(2, min(8, Int((desired / barSeconds).rounded())))
+        let overlapSeconds = min(desired, Double(bars) * barSeconds)
+        let outTarget = durationMs / 1000.0 - overlapSeconds
+
+        func isDownbeat(_ beat: MixRebuildBeat) -> Bool {
+            beat.beatInBar == 0 || beat.downbeatConfidence >= 0.55
+        }
+        let outCandidates = a.beats.filter {
+            $0.time.isFinite && $0.time >= max(0, outTarget - 5) &&
+            $0.time <= durationMs / 1000.0 - overlapSeconds * 0.35 &&
+            isDownbeat($0) && $0.downbeatConfidence >= 0.35
+        }
+        let inCandidates = b.beats.filter {
+            $0.time.isFinite && $0.time >= 1.0 && $0.time <= 30.0 &&
+            isDownbeat($0) && $0.downbeatConfidence >= 0.35
+        }
+        guard let outBeat = outCandidates.min(by: {
+            abs($0.time - outTarget) < abs($1.time - outTarget)
+        }), let inBeat = inCandidates.first else { return fallback() }
+
+        let lengthMs = Int(overlapSeconds * 1000)
+        return MixRebuildOverlap(
+            outStartPositionMs: max(0, Int(outBeat.time * 1000)),
+            inStartPositionMs: max(0, Int(inBeat.time * 1000)),
+            outSpeed: 1,
+            inSpeed: Float(ratio),
+            durationMs: lengthMs,
+            durationBars: bars,
+            isBeatmatched: true,
+            bpmA: a.bpm,
+            bpmB: b.bpm,
+            itemSpeedA: 1,
+            itemSpeedB: 1
+        )
     }
 
     /// Explain why a real PCM envelope cannot produce a reliable BPM.
