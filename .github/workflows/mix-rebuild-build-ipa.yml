@@ -27,15 +27,6 @@ on:
       - 'Tests/LocalMix/**'
       - 'Scripts/run-tests.sh'
       - 'layout/Library/Application Support/EeveeSpotify.bundle/en.lproj/Localizable.strings'
-  pull_request:
-    branches: [mix-rebuild-clean-20261122]
-    paths:
-      - '.github/workflows/mix-rebuild-build-ipa.yml'
-      - 'Sources/EeveeSpotify/LocalMix/**'
-      - 'Sources/EeveeSpotify/Settings/Views/EeveeSettingsView.swift'
-      - 'Tests/LocalMix/**'
-      - 'Scripts/run-tests.sh'
-      - 'layout/Library/Application Support/EeveeSpotify.bundle/en.lproj/Localizable.strings'
   workflow_dispatch:
     inputs:
       ipa_url:
