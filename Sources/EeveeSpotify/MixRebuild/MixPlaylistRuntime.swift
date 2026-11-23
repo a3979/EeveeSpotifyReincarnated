@@ -160,37 +160,27 @@ enum MixPlaylistRuntime {
     }
 
     static var nativeStatus: String {
-        // Show the actual persisted local switch state FIRST. Spotify Free
-        // does not expose a live native preference object in the user's trace,
-        // so this used to display the same "Waiting" message for both On/Off.
-        if !enabled { return "Local Mix switch is OFF" }
-        guard preferences != nil else {
-            return "Local Mix switch is ON. Spotify playback preferences unavailable; audible transitions NOT active or verified."
-        }
-        if requestedMilliseconds < 0 { return "Local Mix switch is ON; waiting for native crossfade request" }
-        if observedMilliseconds == requestedMilliseconds {
-            return "Native crossfade setting accepted; actual audio overlap remains unverified"
-        }
-        return "Native crossfade requested; actual audio overlap remains unverified"
+        enabled ? MixLocalPlayerBridge.shared.status : "Local Mix switch is OFF"
     }
 
     static func enable(_ on: Bool) {
         UserDefaults.standard.set(on, forKey: enabledKey)
-        if on { discoverPreferencesObject() }
         if on {
             peakNativePCMPaths = 0
             peakAVPCMPaths = 0
             startPlaybackSampling()
+            MixLocalPlayerBridge.shared.setPreferredSeconds(seconds)
+            MixLocalPlayerBridge.shared.enable()
         } else {
+            MixLocalPlayerBridge.shared.disable()
             stopPlaybackSampling()
         }
-        apply()
         NotificationCenter.default.post(name: .mixPlaylistStateChanged, object: nil)
     }
 
     static func setSeconds(_ value: Int) {
         UserDefaults.standard.set(max(2, min(12, value)), forKey: secondsKey)
-        if enabled { apply() }
+        MixLocalPlayerBridge.shared.setPreferredSeconds(seconds)
         NotificationCenter.default.post(name: .mixPlaylistStateChanged, object: nil)
     }
 
@@ -259,19 +249,11 @@ enum MixPlaylistRuntime {
         }
     }
 
+    // Native Spotify crossfade preferences are deliberately not written here.
+    // Local Mix controls a second player and applies per-deck PCM gain instead.
     private static func apply() {
-        guard let preferences else { return }
-        // Never replace an unknown original Spotify preference with zero.
-        guard enabled || capturedOriginal else { return }
-        let ms = enabled ? MixRebuildCore.crossfadeMilliseconds(seconds: seconds) : originalMilliseconds
-        let bool = enabled || originalEnabled
-        applying = true
-        MixRebuildSetNativeCrossfadeTime(preferences, ms)
-        if enabled || originalEnabledKnown {
-            MixRebuildSetNativeCrossfadeEnabled(preferences, bool)
-        }
-        applying = false
-        requestedMilliseconds = enabled ? ms : -1
+        requestedMilliseconds = enabled ? MixRebuildCore.crossfadeMilliseconds(seconds: seconds) : -1
+        MixLocalPlayerBridge.shared.setPreferredSeconds(seconds)
     }
 
     static func diagnostics() -> String {
@@ -320,6 +302,7 @@ enum MixPlaylistRuntime {
             "Regular Spotify player service observer status: \(regularPlayerProbeStatus)",
             "Regular Spotify player service attachment attempts: \(regularPlayerProbeAttempts)",
             "Regular player service: \(MixRebuildRegularPlayerStatus())",
+            "Local two-deck Mix engine: \(MixLocalPlayerBridge.shared.diagnostics)",
             "Native Spotify Mix pill intercepted: \(SpotifyNativeMixBinder.attached)",
             "Native Spotify Mix pill scans: \(SpotifyNativeMixBinder.scans)",
             "Native Spotify Mix pill bindings: \(SpotifyNativeMixBinder.binds)",
