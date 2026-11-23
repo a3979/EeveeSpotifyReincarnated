@@ -183,7 +183,7 @@ private final class MixPlaylistEditorController: UIViewController {
     private func refresh() {
         mode.isOn = MixPlaylistRuntime.enabled
         secondsLabel.text = "Transition duration · \(MixPlaylistRuntime.seconds) sec"
-        status.text = MixPlaylistRuntime.nativeStatus + "\nA native preference change does not prove two streamed tracks overlap."
+        status.text = MixPlaylistRuntime.nativeStatus + "\nA transition starts only after both Spotify PCM decks and the queued track are verified."
     }
 
     @objc private func toggle() {
