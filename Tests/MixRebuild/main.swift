@@ -1,3 +1,4 @@
+// CI build trigger: package the current embedded Mix implementation.
 import Foundation
 
 func assertMix(_ test: @autoclosure () -> Bool, _ why: String) {
