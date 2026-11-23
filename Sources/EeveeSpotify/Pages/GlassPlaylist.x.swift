@@ -292,7 +292,6 @@ class GlassPlaylistHook: ClassHook<UIViewController> {
         orig.viewDidLayoutSubviews()
         guard #available(iOS 26.0, *), let root = target.viewIfLoaded else { return }
         GlassPlaylist.meter.measure { GlassPlaylist.style(root) }
-        SpotifyNativeMixBinder.install(in: root)
     }
 
     func viewWillAppear(_ animated: Bool) {
@@ -306,10 +305,7 @@ class GlassPlaylistHook: ClassHook<UIViewController> {
         orig.viewDidAppear(animated)
         guard #available(iOS 26.0, *) else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak target] in
-            if let root = target?.viewIfLoaded, root.window != nil {
-                GlassPlaylist.style(root)
-                SpotifyNativeMixBinder.install(in: root)
-            }
+            if let root = target?.viewIfLoaded, root.window != nil { GlassPlaylist.style(root) }
         }
     }
 }
