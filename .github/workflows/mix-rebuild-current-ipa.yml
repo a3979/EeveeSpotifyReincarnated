@@ -1,7 +1,7 @@
 name: Mix Rebuild · package current source after trigger
 on:
   workflow_run:
-    workflows: ["Mix Rebuild · compile and package Spotify 9.2.2"]
+    workflows: ["Mix Rebuild · compile and package Spotify 9.2.2", "Pixie 1.4 — Spotify 9.2.0"]
     types: [completed]
 
 permissions:
