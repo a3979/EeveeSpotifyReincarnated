@@ -249,8 +249,7 @@ struct EeveeSpotify: Tweak {
         HideJam.activate()
         activateRemoteFlags()
         activateRatingPromptBlock()
-        // The PCM interception layer is installed only when the user enables Local Mix.
-        activateMixNativeServiceProbe()
+        // Mix-specific player/service probes are installed only after explicit opt-in.
         activateEeveeAdBlockerExtended()
         activateUpsellPopupBlocker()
         activateUpsellServiceBlocker()
