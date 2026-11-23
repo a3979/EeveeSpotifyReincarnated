@@ -232,6 +232,7 @@ struct EeveeSpotify: Tweak {
         // Hook crossfade preference construction before Spotify's playback
         // dependency container and playlist UI get initialized.
         activateEeveeCrossfadeForce()
+        MixPlaylistRuntime.activateRegularPlayerProbe()
         activateTelemetryBlock()
         activateTheme()
         activateLiquidGlass()

@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdatomic.h>
+#include <dispatch/dispatch.h>
 #import "Tweak.h"
 
 #if NO_JBROOT
@@ -163,6 +164,125 @@ void MixRebuildSetNativeCrossfadeEnabled(id target, BOOL enabled) {
     SEL sel = NSSelectorFromString(@"setAudioCrossfade:");
     if (!target || ![target respondsToSelector:sel]) return;
     ((void (*)(id, SEL, BOOL))objc_msgSend)(target, sel, enabled);
+}
+
+
+// Read-only observation of Spotify's ordinary (non-Premium) player service.
+// Observing the creation of multiple player proxies is NOT proof that two
+// decoded tracks are playing; do not alter the player, session or content.
+static atomic_int mixRegularPlayerInstall = ATOMIC_VAR_INIT(-100);
+static atomic_uint mixRegularPlayerInjectionCalls;
+static atomic_uint mixRegularPlayerRequests;
+static atomic_uint mixRegularPlayerResults;
+static atomic_uint mixRegularListRequests;
+static atomic_uint mixRegularListResults;
+static NSHashTable *mixRegularLivePlayers;
+static NSHashTable *mixRegularLiveLists;
+static NSObject *mixRegularLock;
+static id (*mixOriginalProvidePlayer)(id, SEL, id, id, id, id);
+static id (*mixOriginalProvideList)(id, SEL, id, id, id, id);
+static void (*mixOriginalRegularInjection)(id, SEL, id);
+
+static void mixRegularEnsureStore(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        mixRegularLock = [NSObject new];
+        mixRegularLivePlayers = [NSHashTable weakObjectsHashTable];
+        mixRegularLiveLists = [NSHashTable weakObjectsHashTable];
+    });
+}
+static void mixRegularRecordObject(id object, BOOL isList) {
+    if (!object) return;
+    mixRegularEnsureStore();
+    @synchronized(mixRegularLock) {
+        [(isList ? mixRegularLiveLists : mixRegularLivePlayers) addObject:object];
+    }
+}
+static id mixRegularObserveProvidePlayer(id self, SEL sel, id uri, id feature, id referrer, id queue) {
+    atomic_fetch_add_explicit(&mixRegularPlayerRequests, 1, memory_order_relaxed);
+    id result = mixOriginalProvidePlayer(self, sel, uri, feature, referrer, queue);
+    if (result) {
+        atomic_fetch_add_explicit(&mixRegularPlayerResults, 1, memory_order_relaxed);
+        mixRegularRecordObject(result, NO);
+    }
+    return result;
+}
+static id mixRegularObserveProvideList(id self, SEL sel, id uri, id feature, id referrer, id queue) {
+    atomic_fetch_add_explicit(&mixRegularListRequests, 1, memory_order_relaxed);
+    id result = mixOriginalProvideList(self, sel, uri, feature, referrer, queue);
+    if (result) {
+        atomic_fetch_add_explicit(&mixRegularListResults, 1, memory_order_relaxed);
+        mixRegularRecordObject(result, YES);
+    }
+    return result;
+}
+static void mixRegularObserveInjection(id self, SEL sel, id provider) {
+    mixOriginalRegularInjection(self, sel, provider);
+    atomic_fetch_add_explicit(&mixRegularPlayerInjectionCalls, 1, memory_order_relaxed);
+}
+
+// Validate exact Objective-C ABIs from Spotify 9.2.2's runtime before
+// installing the wrappers. A missing class returns -1 for a later retry.
+int MixRebuildInstallRegularPlayerObserver(void) {
+    int installed = atomic_load_explicit(&mixRegularPlayerInstall, memory_order_acquire);
+    if (installed != -100) return installed;
+    Class cls = objc_getClass("Player_CommonImpl.SPTPlayerServiceImplementation");
+    if (!cls) return -1;
+    unsigned int count = 0;
+    Method *methods = class_copyMethodList(cls, &count);
+    int mask = 0;
+    for (unsigned int i = 0; i < count; ++i) {
+        Method method = methods[i];
+        SEL sel = method_getName(method);
+        const char *type = method_getTypeEncoding(method);
+        if (!sel || !type) continue;
+        const char *name = sel_getName(sel);
+        if (!mixOriginalProvidePlayer &&
+            strcmp(name, "providePlayerWithViewURI:featureIdentifier:referrerIdentifier:queue:") == 0 &&
+            strcmp(type, "@48@0:8@16@24@32@40") == 0) {
+            mixOriginalProvidePlayer = (id (*)(id, SEL, id, id, id, id))method_getImplementation(method);
+            method_setImplementation(method, (IMP)mixRegularObserveProvidePlayer);
+            mask |= 1;
+        } else if (!mixOriginalProvideList &&
+            strcmp(name, "providePlayerListWithViewURI:featureIdentifier:referrerIdentifier:queue:") == 0 &&
+            strcmp(type, "@48@0:8@16@24@32@40") == 0) {
+            mixOriginalProvideList = (id (*)(id, SEL, id, id, id, id))method_getImplementation(method);
+            method_setImplementation(method, (IMP)mixRegularObserveProvideList);
+            mask |= 2;
+        } else if (!mixOriginalRegularInjection &&
+            strcmp(name, "_injectDependenciesWithProvider:") == 0 &&
+            strcmp(type, "v24@0:8@16") == 0) {
+            mixOriginalRegularInjection = (void (*)(id, SEL, id))method_getImplementation(method);
+            method_setImplementation(method, (IMP)mixRegularObserveInjection);
+            mask |= 4;
+        }
+    }
+    if (methods) free(methods);
+    if (!mask) return -2;
+    mixRegularEnsureStore();
+    atomic_store_explicit(&mixRegularPlayerInstall, mask, memory_order_release);
+    return mask;
+}
+NSString *MixRebuildRegularPlayerStatus(void) {
+    unsigned livePlayers = 0, liveLists = 0;
+    mixRegularEnsureStore();
+    @synchronized(mixRegularLock) {
+        livePlayers = (unsigned)mixRegularLivePlayers.count;
+        liveLists = (unsigned)mixRegularLiveLists.count;
+    }
+    return [NSString stringWithFormat:
+        @"native service observer bitmask=%d (1=player,2=list,4=injection); "
+        @"dependency injections=%u; player requests=%u success=%u; "
+        @"player-list requests=%u success=%u; "
+        @"currently live returned player proxies=%u; currently live player lists=%u; "
+        @"not proof of two decoded tracks",
+        atomic_load_explicit(&mixRegularPlayerInstall, memory_order_acquire),
+        atomic_load_explicit(&mixRegularPlayerInjectionCalls, memory_order_relaxed),
+        atomic_load_explicit(&mixRegularPlayerRequests, memory_order_relaxed),
+        atomic_load_explicit(&mixRegularPlayerResults, memory_order_relaxed),
+        atomic_load_explicit(&mixRegularListRequests, memory_order_relaxed),
+        atomic_load_explicit(&mixRegularListResults, memory_order_relaxed),
+        livePlayers, liveLists];
 }
 
 void EeveeSBInvokeSeekDouble(id target, SEL selector, double argument) {

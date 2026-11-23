@@ -24,6 +24,12 @@ assertMix(MixRebuildCore.crossfadeMilliseconds(seconds: 6) == 6000,
 assertMix(MixRebuildCore.crossfadeMilliseconds(seconds: 12) == 12000,
           "12 seconds must be sent to Spotify as 12000 milliseconds")
 
+assertMix(MixRebuildCore.tempoSignalDescription(
+    energy: pulses(bpm: 120), envelopeHz: 50
+).contains("beat periodicity detected"), "synthetic rhythm should explain detected beats")
+assertMix(MixRebuildCore.tempoSignalDescription(
+    energy: [Double](repeating: 0, count: 900), envelopeHz: 50
+).contains("too quiet"), "silence should report silence, not a missing mixer")
 let a = MixRebuildCore.estimateTempo(energy: pulses(bpm: 120), envelopeHz: 50)
 assertMix(near(a.bpm, 120, 0.6), "detect 120 BPM synthetic beat train: \(a)")
 assertMix(a.confidence >= 0.28, "synthetic beat train has usable confidence")

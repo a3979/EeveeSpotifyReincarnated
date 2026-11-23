@@ -25,6 +25,33 @@ enum MixPlaylistRuntime {
     private static var preferenceCaptureMask = -100
     private static var preferencePollTimer: Timer?
     private static var preferenceLifecycleDetections = 0
+    private static var regularPlayerProbeStatus = -100
+    private static var regularPlayerProbeAttempts = 0
+    private static var regularPlayerProbeTimer: Timer?
+
+    // Spotify's normal playback service is active even when the Premium Mix
+    // transition service never initializes. Observe verified ObjC methods
+    // without creating players or issuing playback commands.
+    static func activateRegularPlayerProbe() {
+        let start = {
+            guard regularPlayerProbeTimer == nil, regularPlayerProbeStatus == -100 else { return }
+            let probe = Timer(timeInterval: 0.25, repeats: true) { timer in
+                regularPlayerProbeAttempts += 1
+                let result = Int(MixRebuildInstallRegularPlayerObserver())
+                if result > 0 || regularPlayerProbeAttempts >= 240 {
+                    regularPlayerProbeStatus = result
+                    timer.invalidate()
+                    regularPlayerProbeTimer = nil
+                }
+            }
+            RunLoop.main.add(probe, forMode: .common)
+            regularPlayerProbeTimer = probe
+            probe.fire()
+        }
+        if Thread.isMainThread { start() }
+        else { DispatchQueue.main.async(execute: start) }
+    }
+
 
     // Spotify Free may never call the public-shaped crossfade getters. Observe
     // only verified Objective-C init/injection methods of the *exact* class,
@@ -288,6 +315,9 @@ enum MixPlaylistRuntime {
             "Peak AVFoundation PCM source paths in same 350ms window: \(peakAVPCMPaths)",
             "IMPORTANT: two audio paths may be one song routed through two units; distinct songs NOT proven.",
             "Current PCM probe: \(MixRebuildPlaybackMonitorStatus())",
+            "Regular Spotify player service observer status: \(regularPlayerProbeStatus)",
+            "Regular Spotify player service attachment attempts: \(regularPlayerProbeAttempts)",
+            "Regular player service: \(MixRebuildRegularPlayerStatus())",
             "Native Spotify Mix pill intercepted: \(SpotifyNativeMixBinder.attached)",
             "Native Spotify Mix pill scans: \(SpotifyNativeMixBinder.scans)",
             "Native Spotify Mix pill bindings: \(SpotifyNativeMixBinder.binds)",

@@ -63,6 +63,43 @@ enum MixRebuildCore {
         return MixRebuildPlan(style: .smooth, seconds: min(available, min(desired, 5)), incomingRate: 1)
     }
 
+    /// Explain why a real PCM envelope cannot produce a reliable BPM.
+    /// This is diagnostic, not a fabricated tempo fallback.
+    static func tempoSignalDescription(energy: [Double], envelopeHz: Double) -> String {
+        guard envelopeHz.isFinite, (15...200).contains(envelopeHz),
+              energy.count >= Int(envelopeHz * 6) else {
+            return "insufficient or irregular PCM envelope"
+        }
+        let levels = energy.map { $0.isFinite ? max(0, min(1, $0)) : 0 }
+        let high = levels.max() ?? 0
+        let low = levels.min() ?? 0
+        if high < 0.00005 {
+            return String(format: "too quiet: RMS peak %.5f", high)
+        }
+        let contrast = (high - low) / high
+        if high - low < max(0.00003, high * 0.08) {
+            return String(format: "low energy contrast: RMS peak %.4f, contrast %.1f%%", high, contrast * 100)
+        }
+        let scale = 1 / high
+        var baseline = 0.0
+        var power = 0.0
+        for i in levels.indices {
+            let v = levels[i] * scale
+            let last = i == 0 ? 0 : levels[i - 1] * scale
+            let onset = max(0, v - last - baseline * 0.03)
+            power += onset * onset
+            baseline = baseline * 0.99 + v * 0.01
+        }
+        if power < 0.02 {
+            return String(format: "weak percussive onsets: RMS peak %.4f, onset power %.4f", high, power)
+        }
+        let tempo = estimateTempo(energy: energy, envelopeHz: envelopeHz)
+        if tempo.confidence < 0.28 {
+            return String(format: "no stable beat periodicity: RMS peak %.4f, onset power %.3f, sample rate %.1f Hz", high, power, envelopeHz)
+        }
+        return String(format: "beat periodicity detected: %.1f BPM at confidence %.2f", tempo.bpm, tempo.confidence)
+    }
+
     /// Causal positive energy change + normalized autocorrelation of onsets.
     /// Takes an offline RMS envelope, typically 50 samples per second. Unlike
     /// online pulse gaps, autocorrelation examines multiple beats together.

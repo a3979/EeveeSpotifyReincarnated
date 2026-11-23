@@ -11,6 +11,8 @@ int MixRebuildReadNativeCrossfade(id target, NSInteger *_Nonnull milliseconds, B
 void MixRebuildSetNativeCrossfadeTime(id target, NSInteger milliseconds);
 void MixRebuildSetNativeCrossfadeEnabled(id target, BOOL enabled);
 NSString *MixRebuildDescribeNativeMixClasses(void);
+int MixRebuildInstallRegularPlayerObserver(void);
+NSString *MixRebuildRegularPlayerStatus(void);
 int MixRebuildInstallPlaybackProbe(void);
 int MixRebuildActiveNativePCMPaths(void);
 int MixRebuildActiveAVFoundationPCMPaths(void);
