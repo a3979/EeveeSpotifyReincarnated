@@ -21,6 +21,9 @@ for main_swift in Tests/*/main.swift; do
         MixRebuild)
             extra_sources+=("Sources/EeveeSpotify/MixRebuild/MixRebuildCore.swift")
             ;;
+        LocalMix)
+            extra_sources+=("Sources/EeveeSpotify/LocalMix/LocalMixMath.swift")
+            ;;
         BrowsitaSectionStripper)
             extra_sources+=("Sources/EeveeSpotify/Premium/Helpers/BrowsitaSectionStripper.swift")
             ;;
