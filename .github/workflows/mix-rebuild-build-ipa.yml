@@ -28,6 +28,8 @@ on:
       - 'Tests/LocalMix/**'
       - 'Scripts/run-tests.sh'
       - 'layout/Library/Application Support/EeveeSpotify.bundle/en.lproj/Localizable.strings'
+  issue_comment:
+    types: [created]
   workflow_dispatch:
     inputs:
       ipa_url:
@@ -45,6 +47,7 @@ env:
   SWIFTPROTOBUF_VERSION: "1.29.0"
 jobs:
   package:
+    if: ${{ github.event.issue.pull_request != null }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
