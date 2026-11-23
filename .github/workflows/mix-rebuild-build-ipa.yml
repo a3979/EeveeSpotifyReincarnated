@@ -1,7 +1,7 @@
 name: Mix Rebuild · compile and package Spotify 9.2.2
 on:
   push:
-    branches: [mix-rebuild-clean-20261122, Master]
+    branches: [mix-rebuild-clean-20261122]
     paths:
       - '.github/workflows/mix-rebuild-build-ipa.yml'
       - 'Sources/EeveeSpotify/MixRebuild/**'
