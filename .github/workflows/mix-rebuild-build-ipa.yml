@@ -1,7 +1,5 @@
 name: Mix Rebuild · compile and package Spotify 9.2.2
 on:
-  schedule:
-    - cron: '*/5 * * * *'
   push:
     branches: [mix-rebuild-clean-20261122]
     paths:
@@ -40,7 +38,7 @@ permissions:
   contents: read
 concurrency:
   group: mix-rebuild-ipa-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 env:
   THEOS: ${{ github.workspace }}/theos
   SWIFTPROTOBUF_VERSION: "1.29.0"
