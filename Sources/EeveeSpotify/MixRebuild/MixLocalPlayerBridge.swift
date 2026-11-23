@@ -252,8 +252,13 @@ final class MixLocalPlayerBridge {
         if phase == .waitingForSecondPCM {
             discoverIncomingSourceIfPresent()
             let active = activeSourceIDs()
-            let bothDecksAreAudible = outgoingSourceID.map(active.contains) == true
-                && incomingSourceID.map(active.contains) == true
+            let bothDecksAreAudible: Bool
+            if let outgoingSourceID, let incomingSourceID {
+                bothDecksAreAudible = active.contains(outgoingSourceID)
+                    && active.contains(incomingSourceID)
+            } else {
+                bothDecksAreAudible = false
+            }
             let secondPlayerMatchesQueue = secondaryPlayer.map { player in
                 guard let expected = incomingTrackURI,
                       let actual = urlString(MixRebuildPlayerTrackURI(player)) else { return false }
