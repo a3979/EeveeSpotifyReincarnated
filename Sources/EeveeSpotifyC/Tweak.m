@@ -29,12 +29,12 @@ NSString *EeveeJBRootPath(NSString *path) {
 }
 
 // Typed primitive ObjC calls; NSObject.perform would corrupt scalar arguments.
-// The playlist Mix toggle only requests Spotify's existing crossfade. It does
-// not enable Spotify's Premium cloud Mix or guarantee two audio tracks overlap.
+// Local playlist Mix asks Spotify's ordinary player service for a second deck,
+// then applies a local gain envelope to each confirmed decoded PCM path. It
+// never decrypts, exports, or stores protected streams and never assumes that
+// a second playable deck exists until an independent PCM path is observed.
 // Diagnostic introspection only. Do not invoke unknown Swift selectors: their
-// signatures have not been verified and could crash Spotify. This captures
-// available Objective-C methods for the native transition player/UI so we can
-// determine whether the bundled Spotify code is usable on a Free account.
+// signatures have not been verified and could crash Spotify.
 static BOOL MixRebuildIsRelevantPlayerClass(const char *name) {
     if (!name) return NO;
     const char *needles[] = {
