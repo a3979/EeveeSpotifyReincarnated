@@ -93,6 +93,7 @@ enum MixPlaylistRuntime {
     private static var bpmEstimate = MixRebuildTempo.unknown
     private static var bpmEnvelopeSamples = 0
     private static var bpmEnvelopeHz = 0.0
+    private static var bpmFailureReason = "No active PCM sampling yet"
     private static var bpmRefreshTicks = 0
 
     static func activatePlaybackVerification() {
@@ -130,15 +131,14 @@ enum MixPlaylistRuntime {
         }
         bpmEnvelopeSamples = Int(count)
         bpmEnvelopeHz = sampleHz
+        let samples = Array(envelope.prefix(Int(count)))
+        bpmFailureReason = MixRebuildCore.tempoSignalDescription(energy: samples, envelopeHz: sampleHz)
         guard sampleHz.isFinite, (15...200).contains(sampleHz),
               Int(count) >= Int(sampleHz * 6) else {
             bpmEstimate = .unknown
             return
         }
-        bpmEstimate = MixRebuildCore.estimateTempo(
-            energy: Array(envelope.prefix(Int(count))),
-            envelopeHz: sampleHz
-        )
+        bpmEstimate = MixRebuildCore.estimateTempo(energy: samples, envelopeHz: sampleHz)
     }
 
     private static func stopPlaybackSampling() {
@@ -149,6 +149,7 @@ enum MixPlaylistRuntime {
         bpmEstimate = .unknown
         bpmEnvelopeSamples = 0
         bpmEnvelopeHz = 0.0
+        bpmFailureReason = "PCM monitor disabled"
     }
 
 
@@ -308,6 +309,7 @@ enum MixPlaylistRuntime {
             "PCM BPM estimate: \(bpmEstimate.confidence >= 0.28 ? "\(Int(bpmEstimate.bpm.rounded())) BPM" : "unavailable")",
             "PCM BPM confidence: \(String(format: "%.2f", bpmEstimate.confidence))",
             "PCM envelope: \(bpmEnvelopeSamples) samples at \(String(format: "%.1f", bpmEnvelopeHz)) Hz",
+            "PCM tempo diagnostic: \(bpmFailureReason)",
             "BPM is estimated from observed PCM energy, not Spotify's track metadata.",
             "Playback overlap: NOT PROVEN (native timing does not establish concurrent tracks)",
             "Read-only monitor installation result: \(monitorStatus)",
