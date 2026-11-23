@@ -27,6 +27,7 @@ final class MixLocalPlayerBridge {
     private var incomingTrackURI: String?
     private var activeTrackURI: String?
     private var sourceIDsBefore = Set<UInt32>()
+    private var registeredSourceIDsBefore = Set<UInt32>()
     private var outgoingSourceID: UInt32?
     private var incomingSourceID: UInt32?
     private var overlap: MixRebuildOverlap?
@@ -200,6 +201,11 @@ final class MixLocalPlayerBridge {
                                   bpm: resolvedBPM, confidence: confidence)
     }
 
+    private func normalizedMilliseconds(_ value: Double) -> Double {
+        guard value.isFinite, value >= 0 else { return value }
+        return value < 1000 ? value * 1000 : value
+    }
+
     private func tick() {
         guard enabled else { return }
         ticks += 1
@@ -223,8 +229,8 @@ final class MixLocalPlayerBridge {
             return
         }
         let playing = MixRebuildPlayerIsPlaying(mainPlayer)
-        let position = MixRebuildPlayerPositionMs(mainPlayer)
-        let duration = MixRebuildPlayerDurationMs(mainPlayer)
+        let position = normalizedMilliseconds(MixRebuildPlayerPositionMs(mainPlayer))
+        let duration = normalizedMilliseconds(MixRebuildPlayerDurationMs(mainPlayer))
         guard playing, position >= 0, duration > 0 else {
             if secondaryPlayer == nil { phase = .waitingForPlayer }
             return
@@ -246,7 +252,7 @@ final class MixLocalPlayerBridge {
         }
         if phase == .waitingForSecondPCM {
             discoverIncomingSourceIfPresent()
-            if incomingSourceID != nil {
+            if let incomingSourceID, activeSourceIDs().contains(incomingSourceID) {
                 phase = .transitioning
                 applyGains(progress: 0)
             } else if let playRequestedAt, Date().timeIntervalSince(playRequestedAt) > 4.0 {
@@ -259,11 +265,6 @@ final class MixLocalPlayerBridge {
             let progress = max(0, min(1, (position - start) / length))
             applyGains(progress: progress)
             if progress >= 1 { finishTransition() }
-        }
-        if let muteArmedAt, incomingSourceID == nil,
-           Date().timeIntervalSince(muteArmedAt) > 8.0 {
-            MixRebuildCancelNextNativePCMSourceMute()
-            self.muteArmedAt = nil
         }
     }
 
@@ -299,6 +300,8 @@ final class MixLocalPlayerBridge {
             phase = .waitingForPlayer
             return
         }
+        sourceIDsBefore = Set(sourceIDs)
+        registeredSourceIDsBefore = Set(registeredSourceIDs())
         guard let second = MixRebuildCreateSecondaryPlayer(service, view, feature, referrer, nextQueue) as? NSObject,
               second !== mainPlayer else {
             fail("Spotify's regular player service did not return a separate player object.")
@@ -325,11 +328,8 @@ final class MixLocalPlayerBridge {
             fail("Could not construct paused playback options for the incoming deck.")
             return
         }
-        sourceIDsBefore = Set(sourceIDs)
         outgoingSourceID = outgoingID
         incomingSourceID = nil
-        MixRebuildArmNextNativePCMSourceMuted()
-        muteArmedAt = Date()
         guard MixRebuildPreparePlayer(second, context, options, view) else {
             MixRebuildCancelNextNativePCMSourceMute()
             muteArmedAt = nil
@@ -338,19 +338,29 @@ final class MixLocalPlayerBridge {
             return
         }
         secondaryPlayer = second
-        nextQueue = nextQueue
+        self.nextQueue = nextQueue
         incomingContext = context
         viewURI = view
         incomingTrackURI = uriString
         overlap = planned
         phase = .preparing
         lastProgress = 0
+        discoverIncomingSourceIfPresent()
+    }
+
+    private func registeredSourceIDs() -> [UInt32] {
+        var ids = [UInt32](repeating: 0, count: 32)
+        let count = ids.withUnsafeMutableBufferPointer { buffer -> UInt32 in
+            guard let base = buffer.baseAddress else { return 0 }
+            return MixRebuildReadRegisteredNativePCMSourceIDs(base, UInt32(buffer.count))
+        }
+        return Array(ids.prefix(Int(count)))
     }
 
     private func discoverIncomingSourceIfPresent() {
         guard incomingSourceID == nil else { return }
-        let ids = activeSourceIDs()
-        if let newID = ids.last(where: { !sourceIDsBefore.contains($0) }) {
+        let ids = registeredSourceIDs()
+        if let newID = ids.last(where: { !registeredSourceIDsBefore.contains($0) }) {
             incomingSourceID = newID
             MixRebuildSetNativePCMSourceGain(newID, 0)
             if let outgoingSourceID { MixRebuildSetNativePCMSourceGain(outgoingSourceID, 1) }
@@ -361,10 +371,11 @@ final class MixLocalPlayerBridge {
     private func startIncomingPlayback() {
         guard let secondaryPlayer, let incomingContext, let viewURI, let overlap else { return }
         if incomingSourceID == nil {
-            let nowIDs = activeSourceIDs()
-            if nowIDs.count >= 2 {
-                discoverIncomingSourceIfPresent()
-            }
+            discoverIncomingSourceIfPresent()
+        }
+        if incomingSourceID == nil {
+            MixRebuildArmNextNativePCMSourceMuted()
+            muteArmedAt = Date()
         }
         let options = MixRebuildCreatePlayOptions(
             false, Double(overlap.inSpeed), Double(overlap.inStartPositionMs)
@@ -389,14 +400,14 @@ final class MixLocalPlayerBridge {
 
     private func finishTransition() {
         guard let oldPlayer = mainPlayer, let second = secondaryPlayer else { return }
-        MixRebuildSetNativePCMSourceGain(incomingSourceID ?? 0, 1)
-        MixRebuildSetNativePCMSourceGain(outgoingSourceID ?? 0, 0)
+        if let incomingSourceID { MixRebuildSetNativePCMSourceGain(incomingSourceID, 1) }
+        if let outgoingSourceID { MixRebuildSetNativePCMSourceGain(outgoingSourceID, 0) }
         let promoted = playerList.map { MixRebuildPromotePlayer($0, second) } ?? false
         _ = MixRebuildStopPlayer(oldPlayer)
         mainPlayer = second
         currentQueue = nextQueue
         activeTrackURI = incomingTrackURI
-        clearSecondary(keepPromotedPlayer: true)
+        clearSecondary()
         MixRebuildResetNativePCMSourceGains()
         phase = promoted ? .waitingForQueue : .promotionFallback
         if !promoted {
@@ -416,15 +427,14 @@ final class MixLocalPlayerBridge {
         phase = .waitingForQueue
     }
 
-    private func clearSecondary(keepPromotedPlayer: Bool = false) {
-        if !keepPromotedPlayer {
-            secondaryPlayer = nil
-        }
+    private func clearSecondary() {
+        secondaryPlayer = nil
         nextQueue = nil
         incomingContext = nil
         viewURI = nil
         incomingTrackURI = nil
         sourceIDsBefore.removeAll()
+        registeredSourceIDsBefore.removeAll()
         outgoingSourceID = nil
         incomingSourceID = nil
         overlap = nil

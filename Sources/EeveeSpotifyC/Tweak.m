@@ -504,6 +504,9 @@ void MixRebuildCancelNextNativePCMSourceMute(void) { SAPCancelNextNativePCMSourc
 uint32_t MixRebuildReadActiveNativePCMSourceIDs(uint32_t *ids, uint32_t capacity) {
     return SAPReadActiveNativePCMSourceIDs(ids, capacity);
 }
+uint32_t MixRebuildReadRegisteredNativePCMSourceIDs(uint32_t *ids, uint32_t capacity) {
+    return SAPReadRegisteredNativePCMSourceIDs(ids, capacity);
+}
 void MixRebuildSetNativePCMSourceGain(uint32_t sourceID, float gain) {
     SAPSetNativePCMSourceGain(sourceID, gain);
 }

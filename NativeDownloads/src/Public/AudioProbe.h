@@ -50,6 +50,7 @@ SAP_EXPORT void SpotifyAudioProbeInitialize(void);
 SAP_EXPORT void SAPArmNextNativePCMSourceMuted(void);
 SAP_EXPORT void SAPCancelNextNativePCMSourceMute(void);
 SAP_EXPORT uint32_t SAPReadActiveNativePCMSourceIDs(uint32_t *ids, uint32_t capacity);
+SAP_EXPORT uint32_t SAPReadRegisteredNativePCMSourceIDs(uint32_t *ids, uint32_t capacity);
 SAP_EXPORT void SAPSetNativePCMSourceGain(uint32_t sourceID, float gain);
 SAP_EXPORT void SAPResetNativePCMSourceGains(void);
 

@@ -634,6 +634,27 @@ SAP_EXPORT uint32_t SAPReadActiveNativePCMSourceIDs(uint32_t *ids, uint32_t capa
     }
     return written;
 }
+SAP_EXPORT uint32_t SAPReadRegisteredNativePCMSourceIDs(uint32_t *ids, uint32_t capacity) {
+    if (!ids || !capacity) return 0;
+    const unsigned count = atomic_load_explicit(&contextCount, memory_order_acquire);
+    uint32_t written = 0;
+    for (unsigned i = 0; i < count && i < SAP_MAX_CONTEXTS && written < capacity; ++i) {
+        SAPContext *ctx = &contexts[i];
+        if (ctx->external || !atomic_load_explicit(&ctx->published, memory_order_acquire) ||
+            atomic_load_explicit(&ctx->retired, memory_order_acquire)) continue;
+        bool duplicate = false;
+        for (unsigned j = 0; j < i; ++j) {
+            SAPContext *previous = &contexts[j];
+            if (previous->external || previous->unit != ctx->unit ||
+                atomic_load_explicit(&previous->retired, memory_order_acquire) ||
+                !atomic_load_explicit(&previous->published, memory_order_acquire)) continue;
+            duplicate = true;
+            break;
+        }
+        if (!duplicate) ids[written++] = i;
+    }
+    return written;
+}
 SAP_EXPORT void SAPSetNativePCMSourceGain(uint32_t sourceID, float gain) {
     if (!isfinite(gain)) return;
     if (gain < 0.0f) gain = 0.0f;

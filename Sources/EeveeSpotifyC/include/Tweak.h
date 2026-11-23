@@ -40,6 +40,7 @@ id _Nullable MixRebuildQueueNextTrack(id queue);
 void MixRebuildArmNextNativePCMSourceMuted(void);
 void MixRebuildCancelNextNativePCMSourceMute(void);
 uint32_t MixRebuildReadActiveNativePCMSourceIDs(uint32_t *ids, uint32_t capacity);
+uint32_t MixRebuildReadRegisteredNativePCMSourceIDs(uint32_t *ids, uint32_t capacity);
 void MixRebuildSetNativePCMSourceGain(uint32_t sourceID, float gain);
 void MixRebuildResetNativePCMSourceGains(void);
 int MixRebuildInstallPlaybackProbe(void);
