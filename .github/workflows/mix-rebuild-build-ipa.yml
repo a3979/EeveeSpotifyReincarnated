@@ -70,6 +70,7 @@ jobs:
           BUNDLE=$(find "$RUNNER_TEMP/deb" -type d -name EeveeSpotify.bundle | head -1)
           test -s "$DY" && test -d "$PROTO"
           grep -aFq 'Eevee.Playlist.Mix' "$DY" || { echo "::error::Missing native playlist Mix control"; exit 1; }
+          grep -aFq 'currently live returned player proxies' "$DY" || { echo "::error::Missing regular Spotify player-service probe"; exit 1; }
           if otool -L "$DY" | tail -n +2 | grep -Ei '/var/jb|libroot|roothide'; then
             echo "::error::Sideload dylib links jailbreak-only libraries"; exit 1
           fi
