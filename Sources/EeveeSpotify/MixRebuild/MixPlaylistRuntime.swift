@@ -166,6 +166,10 @@ enum MixPlaylistRuntime {
     static func enable(_ on: Bool) {
         UserDefaults.standard.set(on, forKey: enabledKey)
         if on {
+            // Install player-service observation only after the user explicitly
+            // enables Local Mix. Keep it out of Spotify's launch path.
+            activateRegularPlayerProbe()
+            activatePlaybackVerification()
             peakNativePCMPaths = 0
             peakAVPCMPaths = 0
             startPlaybackSampling()
