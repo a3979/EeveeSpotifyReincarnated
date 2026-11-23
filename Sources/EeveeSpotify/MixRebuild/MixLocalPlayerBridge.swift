@@ -23,7 +23,7 @@ final class MixLocalPlayerBridge {
     private var currentQueue: NSObject?
     private var nextQueue: NSObject?
     private var incomingContext: NSObject?
-    private var viewURI: AnyObject?
+    private var viewURI: Any?
     private var incomingTrackURI: String?
     private var activeTrackURI: String?
     private var sourceIDsBefore = Set<UInt32>()
@@ -130,7 +130,7 @@ final class MixLocalPlayerBridge {
         return Array(ids.prefix(Int(count)))
     }
 
-    private func urlString(_ value: AnyObject?) -> String? {
+    private func urlString(_ value: Any?) -> String? {
         if let url = value as? NSURL { return url.absoluteString }
         if let url = value as? URL { return url.absoluteString }
         if let string = value as? String { return string }
