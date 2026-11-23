@@ -45,7 +45,7 @@ permissions:
   actions: read
   contents: read
 concurrency:
-  group: mix-rebuild-ipa-${{ github.ref }}
+  group: mix-rebuild-push-${{ github.ref }}
   cancel-in-progress: true
 env:
   THEOS: ${{ github.workspace }}/theos
